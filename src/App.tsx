@@ -1183,7 +1183,14 @@ export default function App() {
                 currentUser={currentUser}
                 onSendMessage={handleSendMessage}
                 onBack={() => setActiveChatId(null)}
-                onStartCall={(type) => handleStartCall(activeChat.id, activeChat.name, activeChat.avatar, type)}
+                onStartCall={(type) => {
+                  const partnerId = activeChat.members.find(mId => mId !== currentUser.id);
+                  if (partnerId) {
+                    handleStartCall(partnerId, activeChat.name, activeChat.avatar, type);
+                  } else {
+                    alert('Tidak dapat memulai panggilan: Partner tidak ditemukan 🐝');
+                  }
+                }}
                 onUpdateMessage={handleUpdateMessage}
                 onDeleteMessage={handleDeleteMessage}
                 onDeleteChat={handleDeleteChat}
