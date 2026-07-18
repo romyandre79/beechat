@@ -886,16 +886,24 @@ app.get('/api/calls', async (req, res) => {
   res.json(dbCache.calls || []);
 });
 
-// Add Call Log
 app.post('/api/calls', async (req, res) => {
   const { id, userId, userName, avatar, type, isOutgoing, timestamp, status, duration } = req.body;
   try {
     // Parse isOutgoing strictly to boolean/number based on database requirements
     const isOutgoingDbVal = typeof isOutgoing === 'boolean' ? isOutgoing : (isOutgoing === 'true' || isOutgoing === 1);
+    
+    // Ensure the user exists in the users table to prevent Foreign Key constraints from failing
+    await dbQuery(`
+      INSERT INTO users (id, name, username, avatar)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (id) DO NOTHING
+    `, [userId, userName, `user_${userId.toLowerCase().replace(/[^a-z0-9]/g, '')}`, avatar]);
+
     await dbQuery(`
       INSERT INTO call_logs (id, user_id, user_name, avatar, type, is_outgoing, timestamp, status, duration)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `, [id, userId, userName, avatar, type, isOutgoingDbVal, timestamp ? new Date(timestamp) : new Date(), status, duration]);
+    
     invalidateCallsCache();
     refreshCallsCache();
     res.json({ success: true });
