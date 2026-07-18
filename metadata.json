@@ -1,0 +1,6 @@
+{
+  "name": "BeeChat",
+  "description": "Modern chatting application inspired by WhatsApp with a warm bee theme, responsive design, and smart server-side Gemini AI features.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
