@@ -890,15 +890,17 @@ app.get('/api/calls', async (req, res) => {
 app.post('/api/calls', async (req, res) => {
   const { id, userId, userName, avatar, type, isOutgoing, timestamp, status, duration } = req.body;
   try {
+    // Parse isOutgoing strictly to boolean/number based on database requirements
+    const isOutgoingDbVal = typeof isOutgoing === 'boolean' ? isOutgoing : (isOutgoing === 'true' || isOutgoing === 1);
     await dbQuery(`
       INSERT INTO call_logs (id, user_id, user_name, avatar, type, is_outgoing, timestamp, status, duration)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `, [id, userId, userName, avatar, type, isOutgoing, timestamp ? new Date(timestamp) : new Date(), status, duration]);
+    `, [id, userId, userName, avatar, type, isOutgoingDbVal, timestamp ? new Date(timestamp) : new Date(), status, duration]);
     invalidateCallsCache();
     refreshCallsCache();
     res.json({ success: true });
   } catch (err: any) {
-    console.error(err);
+    console.error('Error saving call log:', err);
     res.status(500).json({ error: err.message });
   }
 });

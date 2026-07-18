@@ -167,6 +167,15 @@ export class WebRTCService {
     this.currentTargetUserId = targetUserId;
     this.pendingCallType = callType;
 
+    // Check if mediaDevices API is available (only in secure contexts like HTTPS/localhost)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      const errMsg = 'Akses kamera/mikrofon diblokir oleh browser karena koneksi tidak aman (HTTP). Silakan gunakan HTTPS atau localhost untuk melakukan panggilan WebRTC! 🐝';
+      alert(errMsg);
+      console.error('[WebRTC]', errMsg);
+      this.callbacks?.onCallEnded('error');
+      return null;
+    }
+
     try {
       // Get local media stream
       this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -217,12 +226,21 @@ export class WebRTCService {
       return null;
     }
 
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      const errMsg = 'Akses kamera/mikrofon tidak tersedia karena koneksi tidak aman (HTTP). Gunakan HTTPS! 🐝';
+      alert(errMsg);
+      this.cleanup();
+      this.callbacks?.onCallEnded('error');
+      return null;
+    }
+
     try {
       // Get local media stream
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: this.pendingCallType === 'video' ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
       });
+
 
       // Create peer connection
       this.createPeerConnection();
