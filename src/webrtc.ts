@@ -61,7 +61,7 @@ export class WebRTCService {
     }
 
     // Connect to Socket.IO signaling server
-    const socketUrl = API_BASE || window.location.origin;
+    const socketUrl = window.location.origin; // Always connect via public secure origin
     this.socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
