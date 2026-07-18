@@ -36,6 +36,8 @@ export default function App() {
   const [appName, setAppName] = useState('BeeChat');
   const [appVersion, setAppVersion] = useState('1.0.0');
 
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+
   // Load app config from backend env
   useEffect(() => {
     fetch(API_BASE + '/api/config')
@@ -51,19 +53,74 @@ export default function App() {
       })
       .catch(err => console.error('Failed to load app config:', err));
   }, []);
+
+  // Load blocked user list
+  useEffect(() => {
+    if (!currentUser) {
+      setBlockedUsers([]);
+      return;
+    }
+    const fetchBlocked = async () => {
+      try {
+        const res = await fetch(API_BASE + `/api/users/blocked?userId=${currentUser.id}`);
+        if (res.ok) {
+          setBlockedUsers(await res.json());
+        }
+      } catch (err) {
+        console.error('Failed to load blocked list:', err);
+      }
+    };
+    fetchBlocked();
+  }, [currentUser]);
   
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<'chats' | 'status' | 'calls' | 'community' | 'profile' | 'settings' | 'admin'>('chats');
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Database States (persisted via PostgreSQL)
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [statusList, setStatusList] = useState<StatusUpdate[]>([]);
+  // Database States (persisted via PostgreSQL, cached in localStorage)
+  const [chats, setChats] = useState<Chat[]>(() => {
+    const saved = localStorage.getItem('beechat_cached_chats');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem('beechat_cached_messages');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [statusList, setStatusList] = useState<StatusUpdate[]>(() => {
+    const saved = localStorage.getItem('beechat_cached_statuses');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [callLogs, setCallLogs] = useState<CallLog[]>([]);
-  const [communities, setCommunities] = useState<Community[]>([]);
+  const [callLogs, setCallLogs] = useState<CallLog[]>(() => {
+    const saved = localStorage.getItem('beechat_cached_calls');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [communities, setCommunities] = useState<Community[]>(() => {
+    const saved = localStorage.getItem('beechat_cached_communities');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Automatically sync state mutations to LocalStorage for offline-first load
+  useEffect(() => {
+    if (chats.length > 0) localStorage.setItem('beechat_cached_chats', JSON.stringify(chats));
+  }, [chats]);
+
+  useEffect(() => {
+    if (messages.length > 0) localStorage.setItem('beechat_cached_messages', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    if (statusList.length > 0) localStorage.setItem('beechat_cached_statuses', JSON.stringify(statusList));
+  }, [statusList]);
+
+  useEffect(() => {
+    if (callLogs.length > 0) localStorage.setItem('beechat_cached_calls', JSON.stringify(callLogs));
+  }, [callLogs]);
+
+  useEffect(() => {
+    if (communities.length > 0) localStorage.setItem('beechat_cached_communities', JSON.stringify(communities));
+  }, [communities]);
 
   // Theme & Wallpapers
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -247,6 +304,11 @@ export default function App() {
     setCommunities([]);
     setActiveChatId(null);
     localStorage.removeItem('beechat_user');
+    localStorage.removeItem('beechat_cached_chats');
+    localStorage.removeItem('beechat_cached_messages');
+    localStorage.removeItem('beechat_cached_statuses');
+    localStorage.removeItem('beechat_cached_calls');
+    localStorage.removeItem('beechat_cached_communities');
   };
 
   // Toggle Pinned status of a Chat
@@ -265,8 +327,61 @@ export default function App() {
   };
 
   // Delete message
-  const handleDeleteMessage = (messageId: string) => {
+  const handleDeleteMessage = async (messageId: string) => {
     setMessages(prev => prev.filter(m => m.id !== messageId));
+    try {
+      await fetch(API_BASE + `/api/messages/${messageId}?userId=${currentUser?.id}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.error('Failed to delete message:', err);
+    }
+  };
+
+  // Delete chat (Clear chat messages)
+  const handleDeleteChat = async (chatId: string) => {
+    if (!confirm('Apakah Anda yakin ingin membersihkan seluruh pesan di sarang chat ini? Seluruh pesan akan dihapus secara permanen. 🐝')) return;
+    setMessages(prev => prev.filter(m => m.chatId !== chatId));
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, lastMessage: '', lastMessageTime: undefined } : c));
+    try {
+      await fetch(API_BASE + `/api/chats/${chatId}?userId=${currentUser?.id}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.error('Failed to clear chat:', err);
+    }
+  };
+
+  // Block contact
+  const handleBlockUser = async (targetUserId: string) => {
+    if (!currentUser) return;
+    try {
+      await fetch(API_BASE + '/api/users/block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, blockedUserId: targetUserId })
+      });
+      setBlockedUsers(prev => [...prev, targetUserId]);
+      alert('Kontak berhasil diblokir. 🐝');
+    } catch (err) {
+      console.error('Failed to block user:', err);
+    }
+  };
+
+  // Unblock contact
+  const handleUnblockUser = async (targetUserId: string) => {
+    if (!currentUser) return;
+    try {
+      await fetch(API_BASE + '/api/users/unblock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, blockedUserId: targetUserId })
+      });
+      setBlockedUsers(prev => prev.filter(id => id !== targetUserId));
+      alert('Blokir kontak berhasil dibuka. 🐝');
+    } catch (err) {
+      console.error('Failed to unblock user:', err);
+    }
   };
 
   // Send a message and handle Queen Bee AI replies
@@ -276,7 +391,9 @@ export default function App() {
     pollQuestion?: string,
     pollOptions?: string[],
     fileName?: string,
-    fileSize?: string
+    fileSize?: string,
+    replyToId?: string,
+    replyToText?: string
   ) => {
     if (!activeChatId || !currentUser) return;
 
@@ -295,7 +412,9 @@ export default function App() {
       pollQuestion: pollQuestion,
       pollOptions: pollOptions?.map((o, idx) => ({ id: 'opt_' + idx, text: o, votes: [] })),
       fileName: fileName,
-      fileSize: fileSize
+      fileSize: fileSize,
+      replyToId: replyToId,
+      replyToText: replyToText
     };
 
     // 1. Add our message locally
@@ -320,6 +439,7 @@ export default function App() {
     try {
       const encryptedMsg = {
         ...newMsg,
+        status: 'sent' as const,
         text: ['text', 'image', 'video', 'document'].includes(type) ? await encryptMessage(text, activeChatId) : text
       };
       await fetch(API_BASE + '/api/messages', {
@@ -327,6 +447,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(encryptedMsg)
       });
+      setMessages(prev => prev.map(m => m.id === newMessageId ? { ...m, status: 'sent' } : m));
     } catch (err) {
       console.error('Failed to send message to database:', err);
     }
@@ -534,7 +655,18 @@ export default function App() {
 
     setChats(prev => [newChat, ...prev]);
     
-    // Add system message if group
+    // Create the chat room first
+    try {
+      await fetch(API_BASE + '/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newChat)
+      });
+    } catch (err) {
+      console.error('Failed to create new chat in database:', err);
+    }
+
+    // Add system message if group, after the chat room exists
     if (newChatType === 'group') {
       const sysMsg: Message = {
         id: 'm_sys_' + Date.now(),
@@ -548,13 +680,13 @@ export default function App() {
       setMessages(prev => [...prev, sysMsg]);
 
       try {
-        await fetch('/api/messages', {
+        await fetch(API_BASE + '/api/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(sysMsg)
         });
       } catch (err) {
-        console.error(err);
+        console.error('Failed to save system message:', err);
       }
     }
 
@@ -562,16 +694,6 @@ export default function App() {
     setNewChatDesc('');
     setShowNewChatModal(false);
     setActiveChatId(newId);
-
-    try {
-      await fetch('/api/chats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newChat)
-      });
-    } catch (err) {
-      console.error('Failed to create new chat in database:', err);
-    }
   };
 
   // Dispatch global Admin announcement to communities
@@ -868,6 +990,7 @@ export default function App() {
                     setCurrentUser(next);
                     localStorage.setItem('beechat_user', JSON.stringify(next));
                   }}
+                  onUnblockUser={handleUnblockUser}
                 />
               )}
 
@@ -888,7 +1011,6 @@ export default function App() {
               )}
             </div>
           </div>
-
           {/* RIGHT BAR: CHAT ROOM / DETAILS STAGE (Visible on desktop, or on mobile when activeChatId is SET) */}
           <div className={`flex-1 flex flex-col h-full bg-neutral-900 ${
             activeChatId ? 'flex' : 'hidden sm:flex'
@@ -903,6 +1025,10 @@ export default function App() {
                 onStartCall={(type) => handleStartCall(activeChat.id, activeChat.name, activeChat.avatar, type)}
                 onUpdateMessage={handleUpdateMessage}
                 onDeleteMessage={handleDeleteMessage}
+                onDeleteChat={handleDeleteChat}
+                onBlockUser={handleBlockUser}
+                onUnblockUser={handleUnblockUser}
+                blockedUsers={blockedUsers}
               />
             ) : (
               /* LANDING DEFAULT SCREEN FOR DESKTOP */

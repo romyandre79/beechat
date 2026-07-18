@@ -105,14 +105,14 @@ export default function Auth({ onLoginSuccess }: AuthProps) {
           setError(data.error || 'Gagal masuk bzzzt! 🐝');
         }
       } else {
-        const combinedPhone = `${countryCode} ${phoneNum.trim()}`;
+        const combinedPhone = phoneNum.trim() !== '' ? `${countryCode} ${phoneNum.trim()}` : '';
         const newUser: UserProfile = {
           id: userId,
           name: name,
           username: cleanUsername,
           avatar: useCustomAvatar && customAvatar ? customAvatar : BEE_AVATARS[avatarIndex],
           bio: bio,
-          email: email,
+          email: email.trim(),
           phone: combinedPhone,
           isOnline: true
         };
@@ -370,12 +370,11 @@ export default function Auth({ onLoginSuccess }: AuthProps) {
 
               {/* Email */}
               <div className="space-y-1">
-                <label className="text-xs text-neutral-300 font-medium font-sans">Alamat Email</label>
+                <label className="text-xs text-neutral-300 font-medium font-sans">Alamat Email (Opsional)</label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-2.5 h-5 w-5 text-neutral-500" />
                   <input
                     type="email"
-                    required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="lebah@sarang.com"
@@ -438,10 +437,9 @@ export default function Auth({ onLoginSuccess }: AuthProps) {
                     <Phone className="absolute left-3 top-2.5 h-5 w-5 text-neutral-500" />
                     <input
                       type="text"
-                      required
                       value={phoneNum}
                       onChange={(e) => setPhoneNum(e.target.value)}
-                      placeholder="8xx-xxxx-xxxx"
+                      placeholder="8xx-xxxx-xxxx (Opsional)"
                       className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-white"
                     />
                   </div>

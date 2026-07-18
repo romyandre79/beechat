@@ -1,14 +1,22 @@
-import { useState, useRef, FormEvent } from 'react';
+import { useState, useRef, FormEvent, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { User, QrCode, Phone, Mail, FileText, Camera, Sparkles, Check, Clipboard } from 'lucide-react';
+import { User, QrCode, Phone, Mail, FileText, Camera, Sparkles, Check, Clipboard, ShieldAlert, LockKeyholeOpen } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface ProfileViewProps {
   profile: UserProfile;
   onUpdateProfile: (updated: Partial<UserProfile>) => void;
+  onUnblockUser?: (targetUserId: string) => void;
 }
 
-export default function ProfileView({ profile, onUpdateProfile }: ProfileViewProps) {
+declare const __API_SERVER__: string;
+declare const __API_PORT__: string;
+
+const API_BASE = (window.location.protocol.startsWith('http') && !window.location.origin.startsWith('capacitor://') && !window.location.origin.startsWith('http://localhost:80') && !window.location.origin.startsWith('file://'))
+  ? ''
+  : `http://${__API_SERVER__}:${__API_PORT__}`;
+
+export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }: ProfileViewProps) {
   const [name, setName] = useState(profile.name);
   const [bio, setBio] = useState(profile.bio);
   const [phone, setPhone] = useState(profile.phone);
@@ -16,6 +24,44 @@ export default function ProfileView({ profile, onUpdateProfile }: ProfileViewPro
   const [isSaved, setIsSaved] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Blocked Users Management
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+
+  const fetchBlockedUsers = async () => {
+    try {
+      const res = await fetch(API_BASE + `/api/users/blocked/details?userId=${profile.id}`);
+      if (res.ok) {
+        setBlockedUsers(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to fetch blocked users:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchBlockedUsers();
+  }, [profile.id]);
+
+  const handleUnblockClick = async (targetUserId: string) => {
+    try {
+      const res = await fetch(API_BASE + '/api/users/unblock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: profile.id, blockedUserId: targetUserId })
+      });
+      if (res.ok) {
+        fetchBlockedUsers();
+        if (onUnblockUser) {
+          onUnblockUser(targetUserId);
+        } else {
+          alert('Kontak berhasil dibuka blokirnya. 🐝');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to unblock user:', err);
+    }
+  };
 
   const handleSave = (e: FormEvent) => {
     e.preventDefault();
@@ -149,6 +195,46 @@ export default function ProfileView({ profile, onUpdateProfile }: ProfileViewPro
             </button>
           </div>
         </form>
+
+        {/* Blocked contacts list section */}
+        {blockedUsers.length > 0 && (
+          <div className="border-t border-neutral-900 pt-6 space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-red-400 font-mono flex items-center space-x-1.5">
+              <ShieldAlert className="w-4 h-4" />
+              <span>Daftar Kontak Diblokir ({blockedUsers.length})</span>
+            </h3>
+            
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {blockedUsers.map((bu) => (
+                <div 
+                  key={bu.id} 
+                  className="flex items-center justify-between p-3 bg-neutral-900/60 border border-neutral-800 rounded-2xl"
+                >
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    {bu.avatar ? (
+                      <img src={bu.avatar} className="w-7 h-7 rounded-full object-cover" alt="" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-400">🐝</div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-white truncate">{bu.name}</p>
+                      <p className="text-[9px] text-neutral-500 truncate">@{bu.username}</p>
+                    </div>
+                  </div>
+                  
+                  <button
+                    type="button"
+                    onClick={() => handleUnblockClick(bu.id)}
+                    className="px-2.5 py-1.5 bg-neutral-850 hover:bg-red-500/10 hover:text-red-400 border border-neutral-800 rounded-lg text-[10px] font-extrabold text-neutral-400 flex items-center space-x-1 transition-all cursor-pointer"
+                  >
+                    <LockKeyholeOpen className="w-3.5 h-3.5" />
+                    <span>Buka Blokir</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* QR CODE GENERATOR POPUP DIALOG */}

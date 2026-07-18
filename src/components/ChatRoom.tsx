@@ -11,11 +11,24 @@ interface ChatRoomProps {
   chat: Chat;
   messages: Message[];
   currentUser: UserProfile;
-  onSendMessage: (text: string, type?: Message['type'], pollQuestion?: string, pollOptions?: string[], fileName?: string, fileSize?: string) => void;
+  onSendMessage: (
+    text: string,
+    type?: Message['type'],
+    pollQuestion?: string,
+    pollOptions?: string[],
+    fileName?: string,
+    fileSize?: string,
+    replyToId?: string,
+    replyToText?: string
+  ) => void;
   onBack: () => void;
   onStartCall: (type: 'voice' | 'video') => void;
   onUpdateMessage: (messageId: string, updated: Partial<Message>) => void;
   onDeleteMessage: (messageId: string) => void;
+  onDeleteChat: (chatId: string) => void;
+  onBlockUser: (targetUserId: string) => void;
+  onUnblockUser: (targetUserId: string) => void;
+  blockedUsers: string[];
 }
 declare const __API_SERVER__: string;
 declare const __API_PORT__: string;
@@ -32,11 +45,16 @@ export default function ChatRoom({
   onBack,
   onStartCall,
   onUpdateMessage,
-  onDeleteMessage
+  onDeleteMessage,
+  onDeleteChat,
+  onBlockUser,
+  onUnblockUser,
+  blockedUsers
 }: ChatRoomProps) {
   const [inputText, setInputText] = useState('');
   const [activeMessageIdMenu, setActiveMessageIdMenu] = useState<string | null>(null);
   const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   
   // Smart helpers state
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -52,7 +70,100 @@ export default function ChatRoom({
   const [showExtendedReactions, setShowExtendedReactions] = useState(false);
   const [selectedReactionMsgId, setSelectedReactionMsgId] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  
+
+  // Group Members Details State
+  const [showGroupDetailsModal, setShowGroupDetailsModal] = useState(false);
+  const [groupMembers, setGroupMembers] = useState<UserProfile[]>([]);
+  const [searchMemberQuery, setSearchMemberQuery] = useState('');
+  const [memberSearchResults, setMemberSearchResults] = useState<UserProfile[]>([]);
+  const [isSearchingMember, setIsSearchingMember] = useState(false);
+  const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+
+  // Fetch group members list
+  useEffect(() => {
+    if (!chat.isGroup) return;
+    const fetchMembers = async () => {
+      setIsLoadingMembers(true);
+      try {
+        const res = await fetch(API_BASE + `/api/chats/${chat.id}/members`);
+        if (res.ok) {
+          setGroupMembers(await res.json());
+        }
+      } catch (err) {
+        console.error('Failed to fetch group members:', err);
+      } finally {
+        setIsLoadingMembers(false);
+      }
+    };
+    fetchMembers();
+    const interval = setInterval(fetchMembers, 10000);
+    return () => clearInterval(interval);
+  }, [chat.id, chat.isGroup]);
+
+  // Search users to add to group
+  useEffect(() => {
+    if (!searchMemberQuery.trim()) {
+      setMemberSearchResults([]);
+      return;
+    }
+    const delayDebounce = setTimeout(async () => {
+      setIsSearchingMember(true);
+      try {
+        const res = await fetch(API_BASE + `/api/users/search?q=${encodeURIComponent(searchMemberQuery)}`);
+        if (res.ok) {
+          const data: UserProfile[] = await res.json();
+          // Filter out existing members
+          const existingIds = groupMembers.map(m => m.id);
+          setMemberSearchResults(data.filter(u => !existingIds.includes(u.id)));
+        }
+      } catch (err) {
+        console.error('Failed to search users:', err);
+      } finally {
+        setIsSearchingMember(false);
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounce);
+  }, [searchMemberQuery, groupMembers]);
+
+  const handleAddMember = async (userId: string) => {
+    try {
+      const res = await fetch(API_BASE + `/api/chats/${chat.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      if (res.ok) {
+        // Re-fetch members list
+        const membersRes = await fetch(API_BASE + `/api/chats/${chat.id}/members`);
+        if (membersRes.ok) {
+          setGroupMembers(await membersRes.json());
+        }
+        setSearchMemberQuery('');
+        setMemberSearchResults([]);
+      }
+    } catch (err) {
+      console.error('Failed to add member:', err);
+    }
+  };
+
+  const handleRemoveMember = async (targetUserId: string) => {
+    if (window.confirm('Apakah Anda yakin ingin mengeluarkan lebah pekerja ini dari sarang kelompok? 🐝🚫')) {
+      try {
+        const res = await fetch(API_BASE + `/api/chats/${chat.id}/members/${targetUserId}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          const membersRes = await fetch(API_BASE + `/api/chats/${chat.id}/members`);
+          if (membersRes.ok) {
+            setGroupMembers(await membersRes.json());
+          }
+        }
+      } catch (err) {
+        console.error('Failed to remove member:', err);
+      }
+    }
+  };
+
   // Poll State
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptionsInput, setPollOptionsInput] = useState(['', '']);
@@ -203,7 +314,11 @@ export default function ChatRoom({
       inputText,
       'text',
       undefined,
-      replyingToMessage ? [replyingToMessage.id, replyingToMessage.text] : undefined
+      undefined,
+      undefined,
+      undefined,
+      replyingToMessage ? replyingToMessage.id : undefined,
+      replyingToMessage ? replyingToMessage.text : undefined
     );
     setInputText('');
     setReplyingToMessage(null);
@@ -565,6 +680,8 @@ export default function ChatRoom({
     }
   };
 
+  const isPartnerBlocked = partnerId ? blockedUsers.includes(partnerId) : false;
+
   return (
     <div className="flex flex-col h-full bg-neutral-950 font-sans text-white relative">
       {/* 1. HEADER BAR */}
@@ -576,9 +693,13 @@ export default function ChatRoom({
           <img
             src={chat.avatar}
             alt={chat.name}
-            className="w-10 h-10 rounded-full object-cover border border-amber-400"
+            onClick={() => chat.isGroup && setShowGroupDetailsModal(true)}
+            className={`w-10 h-10 rounded-full object-cover border border-amber-400 ${chat.isGroup ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
           />
-          <div className="min-w-0">
+          <div 
+            onClick={() => chat.isGroup && setShowGroupDetailsModal(true)}
+            className={`min-w-0 ${chat.isGroup ? 'cursor-pointer' : ''}`}
+          >
             <h3 className="font-extrabold text-sm truncate text-neutral-100 flex items-center">
               {chat.name}
               {chat.type === 'ai' && (
@@ -638,6 +759,62 @@ export default function ChatRoom({
             <Sparkles className="w-4 h-4" />
             <span className="text-[10px] font-bold font-mono">Ringkas AI</span>
           </button>
+          
+          <div className="relative">
+            <button
+              onClick={() => setShowHeaderMenu(!showHeaderMenu)}
+              className="p-2 hover:bg-neutral-800 text-neutral-300 hover:text-amber-400 rounded-lg transition-colors cursor-pointer"
+              title="Menu Lainnya"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+            <AnimatePresence>
+              {showHeaderMenu && (
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0, y: 5 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.9, opacity: 0, y: 5 }}
+                  className="absolute right-0 mt-2 bg-neutral-900 border border-neutral-800 rounded-2xl p-2 shadow-2xl flex flex-col space-y-1 z-35 min-w-[140px] text-xs text-white"
+                >
+                  <button
+                    onClick={() => {
+                      onDeleteChat(chat.id);
+                      setShowHeaderMenu(false);
+                    }}
+                    className="flex items-center space-x-2.5 p-2 hover:bg-red-950 text-red-400 rounded-xl text-left w-full cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus Chat</span>
+                  </button>
+                  {!chat.isGroup && chat.type !== 'ai' && partnerId && (
+                    isPartnerBlocked ? (
+                      <button
+                        onClick={() => {
+                          onUnblockUser(partnerId);
+                          setShowHeaderMenu(false);
+                        }}
+                        className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 text-emerald-400 rounded-xl text-left w-full cursor-pointer"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Buka Blokir</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          onBlockUser(partnerId);
+                          setShowHeaderMenu(false);
+                        }}
+                        className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 text-red-400 rounded-xl text-left w-full cursor-pointer"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Blokir User</span>
+                      </button>
+                    )
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
@@ -658,6 +835,8 @@ export default function ChatRoom({
           chatMessages.map((msg, index) => {
             const isMe = msg.senderId === currentUser.id;
             const dateStr = formatMessageTime(msg.timestamp);
+            const senderProfile = chat.isGroup ? groupMembers.find(m => m.id === msg.senderId) : null;
+            const senderName = senderProfile ? senderProfile.name : msg.senderId;
 
             return (
               <div
@@ -667,7 +846,9 @@ export default function ChatRoom({
                 {/* Speech Bubble Container */}
                 <div
                   onClick={() => setActiveMessageIdMenu(activeMessageIdMenu === msg.id ? null : msg.id)}
-                  className={`max-w-[85%] md:max-w-[70%] rounded-2xl px-3.5 py-2.5 shadow relative cursor-pointer group-hover:shadow-md transition-all ${
+                  className={`max-w-[85%] md:max-w-[70%] rounded-2xl shadow relative cursor-pointer group-hover:shadow-md transition-all ${
+                    ['image', 'video', 'sticker'].includes(msg.type) ? 'p-1' : 'px-3.5 py-2.5'
+                  } ${
                     msg.type === 'system'
                       ? 'bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs text-center py-1.5 px-4 self-center mx-auto rounded-full font-mono max-w-full'
                       : isMe
@@ -675,6 +856,13 @@ export default function ChatRoom({
                       : 'bg-neutral-800 text-neutral-100 rounded-tl-none'
                   }`}
                 >
+                  {/* Sender Name for Group Chats */}
+                  {chat.isGroup && !isMe && msg.type !== 'system' && (
+                    <div className="text-[10px] font-extrabold text-amber-400 mb-1 font-sans">
+                      {senderName}
+                    </div>
+                  )}
+
                   {/* Reply Reference Preview */}
                   {msg.replyToId && (
                     <div className="border-l-4 border-amber-400 bg-black/25 px-2 py-1 rounded text-[10px] text-neutral-300 mb-2 truncate">
@@ -820,11 +1008,11 @@ export default function ChatRoom({
                           {msg.status === 'sending' ? (
                             <span className="animate-spin text-neutral-400">...</span>
                           ) : msg.status === 'sent' ? (
-                            <Check className="w-3.5 h-3.5" />
+                            <Check className="w-3.5 h-3.5 text-neutral-400" />
                           ) : msg.status === 'delivered' ? (
-                            <CheckCheck className="w-3.5 h-3.5" />
+                            <CheckCheck className="w-3.5 h-3.5 text-neutral-400" />
                           ) : (
-                            <CheckCheck className="w-3.5 h-3.5 text-amber-400 stroke-[2.5]" />
+                            <CheckCheck className="w-3.5 h-3.5 text-sky-400 stroke-[2.5]" />
                           )}
                         </span>
                       )}
@@ -986,197 +1174,211 @@ export default function ChatRoom({
       )}
 
       {/* 5. INPUT MESSAGE BAR */}
-      <div className="p-3 bg-neutral-900 border-t border-neutral-800 flex items-center space-x-2.5 relative">
-        <input
-          type="file"
-          ref={imageInputRef}
-          accept="image/*"
-          className="hidden"
-          onChange={handleImageUpload}
-        />
-        <input
-          type="file"
-          ref={videoInputRef}
-          accept="video/*"
-          className="hidden"
-          onChange={handleVideoUpload}
-        />
-        <input
-          type="file"
-          ref={documentInputRef}
-          accept="*/*"
-          className="hidden"
-          onChange={handleDocumentUpload}
-        />
-        <input
-          type="file"
-          ref={stickerInputRef}
-          accept="image/*"
-          className="hidden"
-          onChange={handleStickerUpload}
-        />
-        {/* Attachment paperclip button */}
-        <div className="relative">
+      {isPartnerBlocked ? (
+        <div className="p-4 bg-neutral-900 border-t border-neutral-800 text-center text-xs text-neutral-400 font-semibold flex items-center justify-center space-x-2">
+          <Lock className="w-4 h-4 text-red-500 animate-pulse" />
+          <span>Anda memblokir kontak ini.</span>
           <button
-            onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-            className="p-2.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-800 rounded-xl transition-all cursor-pointer"
+            type="button"
+            onClick={() => onUnblockUser(partnerId!)}
+            className="text-amber-400 hover:underline font-bold ml-1 cursor-pointer"
           >
-            <Paperclip className="w-5 h-5" />
+            Buka Blokir
           </button>
+        </div>
+      ) : (
+        <div className="p-3 bg-neutral-900 border-t border-neutral-800 flex items-center space-x-2.5 relative">
+          <input
+            type="file"
+            ref={imageInputRef}
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageUpload}
+          />
+          <input
+            type="file"
+            ref={videoInputRef}
+            accept="video/*"
+            className="hidden"
+            onChange={handleVideoUpload}
+          />
+          <input
+            type="file"
+            ref={documentInputRef}
+            accept="*/*"
+            className="hidden"
+            onChange={handleDocumentUpload}
+          />
+          <input
+            type="file"
+            ref={stickerInputRef}
+            accept="image/*"
+            className="hidden"
+            onChange={handleStickerUpload}
+          />
+          {/* Attachment paperclip button */}
+          <div className="relative">
+            <button
+              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              className="p-2.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-800 rounded-xl transition-all cursor-pointer"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
 
-          {/* Attachment Floating Menu */}
+            {/* Attachment Floating Menu */}
+            <AnimatePresence>
+              {showAttachmentMenu && (
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0, y: 10 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.9, opacity: 0, y: 10 }}
+                  className="absolute bottom-14 left-0 bg-neutral-900 border border-neutral-800 rounded-2xl p-3 shadow-2xl flex flex-col space-y-1 z-30 text-xs min-w-[140px]"
+                >
+                  <button
+                    onClick={() => {
+                      imageInputRef.current?.click();
+                      setShowAttachmentMenu(false);
+                    }}
+                    className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
+                  >
+                    <ImageIcon className="w-4 h-4 text-amber-400" />
+                    <span>Kirim Foto</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      videoInputRef.current?.click();
+                      setShowAttachmentMenu(false);
+                    }}
+                    className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
+                  >
+                    <Video className="w-4 h-4 text-amber-400" />
+                    <span>Kirim Video</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      documentInputRef.current?.click();
+                      setShowAttachmentMenu(false);
+                    }}
+                    className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <span>Kirim Dokumen</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowPollCreator(true);
+                      setShowAttachmentMenu(false);
+                    }}
+                    className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
+                  >
+                    <Vote className="w-4 h-4 text-amber-400" />
+                    <span>Buat Polling</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowStickers(true);
+                      setShowAttachmentMenu(false);
+                    }}
+                    className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
+                  >
+                    <Smile className="w-4 h-4 text-amber-400" />
+                    <span>Kirim Stiker</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Input Text field */}
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            placeholder={recording ? "Sedang merekam suara bzzzt..." : "Ketik pesan manismu..."}
+            disabled={recording}
+            className="flex-1 bg-neutral-950 border border-neutral-800 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
+          />
+
+          {/* Mute/Voice recording and send action button */}
+          <div className="flex space-x-1.5">
+            <button
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className={`p-2.5 rounded-xl transition-all cursor-pointer ${
+                showEmojiPicker ? 'bg-amber-400 text-neutral-950 font-bold' : 'text-neutral-400 hover:text-amber-400 hover:bg-neutral-800'
+              }`}
+              title="Pilih Emoticon"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={toggleRecording}
+              className={`p-2.5 rounded-xl transition-all cursor-pointer ${
+                recording ? 'bg-red-600 text-white animate-pulse' : 'text-neutral-400 hover:text-amber-400 hover:bg-neutral-800'
+              }`}
+            >
+              <Mic className="w-5 h-5" />
+            </button>
+            
+            <button
+              onClick={handleSend}
+              disabled={!inputText.trim()}
+              className="p-2.5 bg-amber-400 text-neutral-950 rounded-xl disabled:bg-neutral-800 disabled:text-neutral-600 hover:bg-amber-500 transition-colors cursor-pointer"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Emoji Picker Panel for input text bar */}
           <AnimatePresence>
-            {showAttachmentMenu && (
+            {showEmojiPicker && (
               <motion.div
-                initial={{ scale: 0.9, opacity: 0, y: 10 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 10 }}
-                className="absolute bottom-14 left-0 bg-neutral-900 border border-neutral-800 rounded-2xl p-3 shadow-2xl flex flex-col space-y-1 z-30 text-xs min-w-[140px]"
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute bottom-16 right-4 z-40 bg-neutral-900 border border-neutral-800 rounded-3xl p-4 shadow-2xl w-[280px] max-h-[220px]"
               >
-                <button
-                  onClick={() => {
-                    imageInputRef.current?.click();
-                    setShowAttachmentMenu(false);
-                  }}
-                  className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
-                >
-                  <ImageIcon className="w-4 h-4 text-amber-400" />
-                  <span>Kirim Foto</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    videoInputRef.current?.click();
-                    setShowAttachmentMenu(false);
-                  }}
-                  className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
-                >
-                  <Video className="w-4 h-4 text-amber-400" />
-                  <span>Kirim Video</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    documentInputRef.current?.click();
-                    setShowAttachmentMenu(false);
-                  }}
-                  className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
-                >
-                  <FileText className="w-4 h-4 text-amber-400" />
-                  <span>Kirim Dokumen</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowPollCreator(true);
-                    setShowAttachmentMenu(false);
-                  }}
-                  className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
-                >
-                  <Vote className="w-4 h-4 text-amber-400" />
-                  <span>Buat Polling</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowStickers(true);
-                    setShowAttachmentMenu(false);
-                  }}
-                  className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
-                >
-                  <Smile className="w-4 h-4 text-amber-400" />
-                  <span>Kirim Stiker</span>
-                </button>
+                <div className="flex justify-between items-center mb-2 pb-1 border-b border-neutral-800">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-amber-400 font-extrabold">Emoticon BeeChat</span>
+                  <button 
+                    onClick={() => setShowEmojiPicker(false)}
+                    className="text-[10px] text-neutral-500 hover:text-white cursor-pointer"
+                  >
+                    Tutup
+                  </button>
+                </div>
+                <div className="grid grid-cols-7 gap-2 overflow-y-auto max-h-[145px] p-1 justify-items-center">
+                  {[
+                    '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+                    '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
+                    '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥸',
+                    '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️',
+                    '👍', '👎', '👊', '✊', '🤛', '🤜', '🤞', '✌️', '🤟', '🤘',
+                    '👌', '🤌', '🤏', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚',
+                    '🖐️', '🖖', '👋', '🤙', '💪', '🦾', '🙏', '✍️', '👏', '🙌',
+                    '🔥', '🎉', '💯', '❤️', '💔', '💖', '✨', '🚀', '👀', '💩'
+                  ].map((em, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setInputText(prev => prev + em);
+                      }}
+                      className="text-xl p-1 hover:scale-125 hover:bg-neutral-800 rounded-lg transition-transform cursor-pointer"
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
-
-        {/* Input Text field */}
-        <input
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={recording ? "Sedang merekam suara bzzzt..." : "Ketik pesan manismu..."}
-          disabled={recording}
-          className="flex-1 bg-neutral-950 border border-neutral-800 rounded-2xl px-4 py-2.5 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400"
-        />
-
-        {/* Mute/Voice recording and send action button */}
-        <div className="flex space-x-1.5">
-          <button
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-              showEmojiPicker ? 'bg-amber-400 text-neutral-950 font-bold' : 'text-neutral-400 hover:text-amber-400 hover:bg-neutral-800'
-            }`}
-            title="Pilih Emoticon"
-          >
-            <Smile className="w-5 h-5" />
-          </button>
-
-          <button
-            onClick={toggleRecording}
-            className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-              recording ? 'bg-red-600 text-white animate-pulse' : 'text-neutral-400 hover:text-amber-400 hover:bg-neutral-800'
-            }`}
-          >
-            <Mic className="w-5 h-5" />
-          </button>
-          
-          <button
-            onClick={handleSend}
-            disabled={!inputText.trim()}
-            className="p-2.5 bg-amber-400 text-neutral-950 rounded-xl disabled:bg-neutral-800 disabled:text-neutral-600 hover:bg-amber-500 transition-colors cursor-pointer"
-          >
-            <Send className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Emoji Picker Panel for input text bar */}
-        <AnimatePresence>
-          {showEmojiPicker && (
-            <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              className="absolute bottom-16 right-4 z-40 bg-neutral-900 border border-neutral-800 rounded-3xl p-4 shadow-2xl w-[280px] max-h-[220px]"
-            >
-              <div className="flex justify-between items-center mb-2 pb-1 border-b border-neutral-800">
-                <span className="text-[10px] uppercase font-mono tracking-wider text-amber-400 font-extrabold">Emoticon BeeChat</span>
-                <button 
-                  onClick={() => setShowEmojiPicker(false)}
-                  className="text-[10px] text-neutral-500 hover:text-white cursor-pointer"
-                >
-                  Tutup
-                </button>
-              </div>
-              <div className="grid grid-cols-7 gap-2 overflow-y-auto max-h-[145px] p-1 justify-items-center">
-                {[
-                  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
-                  '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
-                  '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥸',
-                  '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️',
-                  '👍', '👎', '👊', '✊', '🤛', '🤜', '🤞', '✌️', '🤟', '🤘',
-                  '👌', '🤌', '🤏', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚',
-                  '🖐️', '🖖', '👋', '🤙', '💪', '🦾', '🙏', '✍️', '👏', '🙌',
-                  '🔥', '🎉', '💯', '❤️', '💔', '💖', '✨', '🚀', '👀', '💩'
-                ].map((em, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      setInputText(prev => prev + em);
-                    }}
-                    className="text-xl p-1 hover:scale-125 hover:bg-neutral-800 rounded-lg transition-transform cursor-pointer"
-                  >
-                    {em}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      )}
 
       {/* 6. MODAL: CHAT SUMMARY DISPLAY */}
       <AnimatePresence>
@@ -1337,6 +1539,167 @@ export default function ChatRoom({
           </motion.div>
         </div>
       )}
+      {/* 9. MODAL: GROUP MEMBERS & INFO DETAILS */}
+      <AnimatePresence>
+        {showGroupDetailsModal && (
+          <div className="fixed inset-0 z-50 bg-neutral-950/90 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
+            >
+              {/* Header */}
+              <div className="p-4 bg-neutral-950 border-b border-neutral-800 flex justify-between items-center">
+                <h3 className="font-extrabold text-sm text-amber-400 flex items-center">
+                  <Smile className="w-4 h-4 mr-1.5" /> Informasi Sarang Kelompok
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowGroupDetailsModal(false);
+                    setSearchMemberQuery('');
+                    setMemberSearchResults([]);
+                  }}
+                  className="text-neutral-400 hover:text-white font-bold p-1 transition-colors"
+                >
+                  X
+                </button>
+              </div>
+
+              {/* Content body */}
+              <div className="p-5 flex-1 overflow-y-auto space-y-5">
+                {/* Group profile card */}
+                <div className="flex flex-col items-center text-center space-y-2 border-b border-neutral-800 pb-4">
+                  <img
+                    src={chat.avatar}
+                    alt={chat.name}
+                    className="w-16 h-16 rounded-full object-cover border-2 border-amber-400 shadow-md"
+                  />
+                  <h4 className="font-bold text-base text-white">{chat.name}</h4>
+                  <p className="text-xs text-neutral-400 font-medium">
+                    {chat.description || 'Tidak ada deskripsi sarang.'}
+                  </p>
+                </div>
+
+                {/* Add member search */}
+                <div className="space-y-2">
+                  <label className="text-xs text-neutral-300 font-semibold flex items-center justify-between">
+                    <span>Masukkan Lebah Pekerja Baru 🐝</span>
+                    <span className="text-[10px] text-neutral-500">Cari berdasarkan nama/username</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchMemberQuery}
+                      onChange={(e) => setSearchMemberQuery(e.target.value)}
+                      placeholder="Cari lebah untuk diundang..."
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                    />
+                    {isSearchingMember && (
+                      <div className="absolute right-3 top-3 w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+                    )}
+                  </div>
+
+                  {/* Search results list */}
+                  {memberSearchResults.length > 0 && (
+                    <div className="bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden max-h-40 overflow-y-auto divide-y divide-neutral-900 mt-2">
+                      {memberSearchResults.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => handleAddMember(u.id)}
+                          className="w-full text-left p-2.5 hover:bg-neutral-900 transition-colors flex items-center justify-between group"
+                        >
+                          <div className="flex items-center space-x-2.5 min-w-0">
+                            {u.avatar ? (
+                              <img src={u.avatar} className="w-7 h-7 rounded-full object-cover" alt="" />
+                            ) : (
+                              <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-400">🐝</div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-white truncate">{u.name}</p>
+                              <p className="text-[10px] text-neutral-500 truncate">@{u.username}</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-1 rounded-lg group-hover:bg-amber-400 group-hover:text-neutral-950 transition-all">
+                            Masukkan
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {searchMemberQuery.trim() !== '' && !isSearchingMember && memberSearchResults.length === 0 && (
+                    <p className="text-[10px] text-neutral-500 italic mt-1 pl-1">
+                      Tidak ada lebah pekerja baru yang cocok.
+                    </p>
+                  )}
+                </div>
+
+                {/* Members list */}
+                <div className="space-y-3">
+                  <h5 className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                    Daftar Anggota Kelompok ({groupMembers.length})
+                  </h5>
+                  
+                  {isLoadingMembers && groupMembers.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-neutral-500 flex flex-col items-center justify-center space-y-2">
+                      <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+                      <span>Memuat anggota...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                      {groupMembers.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between bg-neutral-950/55 border border-neutral-800/60 p-2.5 rounded-2xl"
+                        >
+                          <div className="flex items-center space-x-2.5 min-w-0">
+                            {m.avatar ? (
+                              <img src={m.avatar} className="w-8 h-8 rounded-full object-cover" alt="" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs text-neutral-400">🐝</div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-white truncate flex items-center">
+                                {m.name}
+                                {m.id === currentUser.id && (
+                                  <span className="ml-1 text-[8px] bg-neutral-800 text-neutral-400 px-1 py-0.5 rounded">Anda</span>
+                                )}
+                              </p>
+                              <p className="text-[10px] text-neutral-500 truncate">{m.bio || 'Menghasilkan nektar kebaikan. 🍯'}</p>
+                            </div>
+                          </div>
+                          
+                          {/* Online status indicator & Kick option */}
+                          <div className="flex items-center space-x-2.5 flex-shrink-0">
+                            <div className="flex items-center space-x-1">
+                              <span className={`w-1.5 h-1.5 rounded-full ${m.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-600'}`} />
+                              <span className="text-[9px] text-neutral-400">
+                                {m.isOnline ? 'Aktif' : 'Offline'}
+                              </span>
+                            </div>
+                            
+                            {m.id !== currentUser.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMember(m.id)}
+                                className="px-2 py-1 bg-red-950/40 hover:bg-red-900 border border-red-900/60 rounded-lg text-[9px] font-extrabold text-red-400 transition-colors cursor-pointer"
+                              >
+                                Keluarkan
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       {isUploadingMedia && (
         <div className="fixed inset-0 z-[60] bg-neutral-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4">
           <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 flex flex-col items-center space-y-4 shadow-2xl max-w-xs w-full text-center">
