@@ -2,6 +2,9 @@
 
 const SALT = '_beechat_honey_salt_';
 
+// crypto.subtle is ONLY available in secure contexts (HTTPS or localhost)
+const isSubtleAvailable = typeof window !== 'undefined' && window.crypto && window.crypto.subtle;
+
 async function getKey(password: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   // Generate a hash of the password to use as a stable key material
@@ -17,6 +20,7 @@ async function getKey(password: string): Promise<CryptoKey> {
 
 export async function encryptMessage(text: string, chatId: string): Promise<string> {
   if (!text) return text;
+  if (!isSubtleAvailable) return text; // Fallback: plaintext when not in secure context
   try {
     const key = await getKey(chatId);
     const enc = new TextEncoder();
@@ -43,6 +47,7 @@ export async function decryptMessage(cipherText: string, chatId: string): Promis
   if (!cipherText || !cipherText.startsWith('e2ee:')) {
     return cipherText; // Return plaintext directly if not encrypted
   }
+  if (!isSubtleAvailable) return cipherText; // Can't decrypt without crypto.subtle
   try {
     const parts = cipherText.split(':');
     if (parts.length < 3) return cipherText;
@@ -66,3 +71,4 @@ export async function decryptMessage(cipherText: string, chatId: string): Promis
     return '🔑 [Pesan Terenkripsi - Gagal Mendekripsi]';
   }
 }
+
