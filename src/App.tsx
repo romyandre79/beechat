@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MessageSquare, Circle, Phone, Users, User, Settings, ShieldAlert, Plus, Search, Sun, Moon, LogOut,
@@ -11,6 +11,7 @@ import {
   speakText, simulateAiChat
 } from './utils';
 import { encryptMessage, decryptMessage } from './crypto';
+import { webrtcService, IncomingCallData } from './webrtc';
 
 // Subcomponents
 import Splash from './components/Splash';
@@ -139,6 +140,12 @@ export default function App() {
     type: 'voice' | 'video';
     isIncoming: boolean;
   } | null>(null);
+
+  // WebRTC state
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [webrtcConnectionState, setWebrtcConnectionState] = useState<string>('new');
+  const callStartTimeRef = useRef<number>(0);
 
   // Modal: Start New Chat
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -296,6 +303,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    webrtcService.destroy();
     setCurrentUser(null);
     setChats([]);
     setMessages([]);
@@ -303,6 +311,9 @@ export default function App() {
     setCallLogs([]);
     setCommunities([]);
     setActiveChatId(null);
+    setActiveCall(null);
+    setLocalStream(null);
+    setRemoteStream(null);
     localStorage.removeItem('beechat_user');
     localStorage.removeItem('beechat_cached_chats');
     localStorage.removeItem('beechat_cached_messages');
@@ -572,9 +583,78 @@ export default function App() {
       xhr.send(JSON.stringify(newStatus));
     });
   };
+  // --- WebRTC Initialization ---
+  useEffect(() => {
+    if (!currentUser) return;
 
-  // Start Voice or Video Call Simulation
-  const handleStartCall = (userId: string, userName: string, avatar: string, type: 'voice' | 'video') => {
+    webrtcService.init(currentUser.id, {
+      onIncomingCall: (data: IncomingCallData) => {
+        setActiveCall({
+          userId: data.callerId,
+          userName: data.callerName,
+          avatar: data.callerAvatar,
+          type: data.callType,
+          isIncoming: true
+        });
+        setWebrtcConnectionState('new');
+      },
+      onCallConnected: () => {
+        setWebrtcConnectionState('connected');
+        callStartTimeRef.current = Date.now();
+      },
+      onCallEnded: (reason) => {
+        console.log('[App] Call ended, reason:', reason);
+        // Save call log before clearing state
+        setActiveCall(prev => {
+          if (prev && currentUser) {
+            const duration = callStartTimeRef.current > 0
+              ? Math.floor((Date.now() - callStartTimeRef.current) / 1000)
+              : 0;
+            const mins = Math.floor(duration / 60).toString().padStart(2, '0');
+            const secs = (duration % 60).toString().padStart(2, '0');
+
+            const newLog: CallLog = {
+              id: 'call_' + Date.now(),
+              userId: prev.userId,
+              userName: prev.userName,
+              avatar: prev.avatar,
+              type: prev.type,
+              isOutgoing: !prev.isIncoming,
+              timestamp: new Date().toISOString(),
+              status: reason === 'rejected' ? 'declined' : reason === 'unavailable' ? 'missed' : 'completed',
+              duration: `${mins}:${secs}`
+            };
+            setCallLogs(logs => [newLog, ...logs]);
+            fetch(API_BASE + '/api/calls', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(newLog)
+            }).catch(err => console.error('Failed to save call log:', err));
+          }
+          return null;
+        });
+        setLocalStream(null);
+        setRemoteStream(null);
+        setWebrtcConnectionState('new');
+        callStartTimeRef.current = 0;
+      },
+      onRemoteStream: (stream: MediaStream) => {
+        setRemoteStream(stream);
+      },
+      onConnectionStateChange: (state: string) => {
+        setWebrtcConnectionState(state);
+      }
+    });
+
+    return () => {
+      // Don't destroy on re-render, only on real unmount/logout
+    };
+  }, [currentUser?.id]);
+
+  // Start Voice or Video Call (WebRTC)
+  const handleStartCall = async (userId: string, userName: string, avatar: string, type: 'voice' | 'video') => {
+    if (!currentUser) return;
+
     setActiveCall({
       userId,
       userName,
@@ -582,11 +662,70 @@ export default function App() {
       type,
       isIncoming: false
     });
+    setWebrtcConnectionState('connecting');
+
+    const stream = await webrtcService.startCall(
+      userId,
+      currentUser.name,
+      currentUser.avatar,
+      type
+    );
+
+    if (stream) {
+      setLocalStream(stream);
+    } else {
+      // Call failed to start
+      setActiveCall(null);
+      setWebrtcConnectionState('new');
+    }
   };
 
-  // Hangup call
+  // Answer incoming call
+  const handleAnswerCall = async () => {
+    const stream = await webrtcService.answerCall();
+    if (stream) {
+      setLocalStream(stream);
+      setActiveCall(prev => prev ? { ...prev, isIncoming: false } : null);
+    }
+  };
+
+  // Reject incoming call
+  const handleRejectCall = () => {
+    webrtcService.rejectCall();
+    if (activeCall && currentUser) {
+      const newLog: CallLog = {
+        id: 'call_' + Date.now(),
+        userId: activeCall.userId,
+        userName: activeCall.userName,
+        avatar: activeCall.avatar,
+        type: activeCall.type,
+        isOutgoing: false,
+        timestamp: new Date().toISOString(),
+        status: 'declined',
+        duration: '00:00'
+      };
+      setCallLogs(prev => [newLog, ...prev]);
+      fetch(API_BASE + '/api/calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newLog)
+      }).catch(err => console.error('Failed to save call log:', err));
+    }
+    setActiveCall(null);
+    setLocalStream(null);
+    setRemoteStream(null);
+    setWebrtcConnectionState('new');
+  };
+
+  // Hangup call (WebRTC)
   const handleEndCall = async () => {
     if (!activeCall || !currentUser) return;
+
+    const duration = callStartTimeRef.current > 0
+      ? Math.floor((Date.now() - callStartTimeRef.current) / 1000)
+      : 0;
+    const mins = Math.floor(duration / 60).toString().padStart(2, '0');
+    const secs = (duration % 60).toString().padStart(2, '0');
 
     // Log call
     const newLog: CallLog = {
@@ -597,15 +736,21 @@ export default function App() {
       type: activeCall.type,
       isOutgoing: !activeCall.isIncoming,
       timestamp: new Date().toISOString(),
-      status: activeCall.isIncoming ? 'declined' : 'completed',
-      duration: '01:24'
+      status: 'completed',
+      duration: `${mins}:${secs}`
     };
 
     setCallLogs(prev => [newLog, ...prev]);
     setActiveCall(null);
+    setLocalStream(null);
+    setRemoteStream(null);
+    setWebrtcConnectionState('new');
+    callStartTimeRef.current = 0;
+
+    webrtcService.endCall();
 
     try {
-      await fetch('/api/calls', {
+      await fetch(API_BASE + '/api/calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newLog)
@@ -613,6 +758,15 @@ export default function App() {
     } catch (err) {
       console.error('Failed to save call log to database:', err);
     }
+  };
+
+  // WebRTC media controls
+  const handleToggleMute = (): boolean => {
+    return webrtcService.toggleMute();
+  };
+
+  const handleToggleCamera = (): boolean => {
+    return webrtcService.toggleCamera();
   };
 
   // Create new chat room (Group or direct)
@@ -972,6 +1126,13 @@ export default function App() {
                   activeCall={activeCall}
                   onStartCall={(uid, uname, av, type) => handleStartCall(uid, uname, av, type)}
                   onEndCall={handleEndCall}
+                  onAnswerCall={handleAnswerCall}
+                  onRejectCall={handleRejectCall}
+                  localStream={localStream}
+                  remoteStream={remoteStream}
+                  connectionState={webrtcConnectionState}
+                  onToggleMute={handleToggleMute}
+                  onToggleCamera={handleToggleCamera}
                 />
               )}
 

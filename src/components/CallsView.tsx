@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Phone, Video, PhoneOff, Mic, MicOff, Volume2, Camera, Shield, Users, Monitor, Maximize, Circle, HelpCircle } from 'lucide-react';
+import { Phone, Video, PhoneOff, Mic, MicOff, Volume2, VolumeX, Camera, CameraOff, Shield, Users, Monitor, Circle, Wifi, WifiOff } from 'lucide-react';
 import { CallLog } from '../types';
 
 interface CallsViewProps {
@@ -14,30 +14,73 @@ interface CallsViewProps {
   } | null;
   onStartCall: (userId: string, userName: string, avatar: string, type: 'voice' | 'video') => void;
   onEndCall: () => void;
+  onAnswerCall: () => void;
+  onRejectCall: () => void;
+  localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
+  connectionState: string;
+  onToggleMute: () => boolean;
+  onToggleCamera: () => boolean;
 }
 
-export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall }: CallsViewProps) {
+export default function CallsView({
+  callLogs, activeCall, onStartCall, onEndCall, onAnswerCall, onRejectCall,
+  localStream, remoteStream, connectionState, onToggleMute, onToggleCamera
+}: CallsViewProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const [isBackgroundBlurred, setIsBackgroundBlurred] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [cameraDirection, setCameraDirection] = useState<'front' | 'back'>('front');
   const [callTimer, setCallTimer] = useState(0);
 
-  // Call timer effect
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+
+  // Attach local stream to video element
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream]);
+
+  // Attach remote stream to video/audio element
+  useEffect(() => {
+    if (remoteStream) {
+      if (activeCall?.type === 'video' && remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+      }
+    }
+  }, [remoteStream, activeCall?.type]);
+
+  // Handle speaker toggle on audio/video element
+  useEffect(() => {
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = !isSpeakerOn;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = !isSpeakerOn;
+    }
+  }, [isSpeakerOn]);
+
+  // Call timer - starts when connected
   useEffect(() => {
     let timer: any;
-    if (activeCall && !activeCall.isIncoming) {
-      setCallTimer(0);
+    if (activeCall && connectionState === 'connected') {
       timer = setInterval(() => {
         setCallTimer(prev => prev + 1);
       }, 1000);
-    } else {
+    }
+    if (!activeCall) {
       setCallTimer(0);
+      setIsMuted(false);
+      setIsCameraOn(true);
+      setIsSpeakerOn(true);
     }
     return () => clearInterval(timer);
-  }, [activeCall]);
+  }, [activeCall, connectionState]);
 
   const formatTimer = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -45,8 +88,50 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
     return `${mins.toString().padStart(2, '0')}:${remainingSecs.toString().padStart(2, '0')}`;
   };
 
+  const handleToggleMute = () => {
+    const muted = onToggleMute();
+    setIsMuted(muted);
+  };
+
+  const handleToggleCamera = () => {
+    const cameraOn = onToggleCamera();
+    setIsCameraOn(cameraOn);
+  };
+
+  const getStatusText = () => {
+    if (activeCall?.isIncoming && connectionState !== 'connected') {
+      return 'Panggilan Masuk...';
+    }
+    switch (connectionState) {
+      case 'connecting':
+      case 'new':
+        return 'Menghubungkan...';
+      case 'connected':
+        return formatTimer(callTimer);
+      case 'disconnected':
+        return 'Terputus...';
+      case 'failed':
+        return 'Koneksi Gagal';
+      default:
+        return 'Memanggil...';
+    }
+  };
+
+  const getConnectionIcon = () => {
+    if (connectionState === 'connected') {
+      return <Wifi className="w-3 h-3 text-emerald-400" />;
+    }
+    if (connectionState === 'failed' || connectionState === 'disconnected') {
+      return <WifiOff className="w-3 h-3 text-red-400" />;
+    }
+    return <Wifi className="w-3 h-3 text-amber-400 animate-pulse" />;
+  };
+
   return (
     <div className="flex flex-col h-full bg-neutral-950 font-sans text-white overflow-y-auto relative">
+      {/* Hidden audio element for voice calls */}
+      <audio ref={remoteAudioRef} autoPlay playsInline />
+
       {/* View Header */}
       <div className="p-4 bg-neutral-900 border-b border-neutral-800 sticky top-0 z-10 flex justify-between items-center">
         <div>
@@ -132,9 +217,18 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
                 <Shield className="w-3.5 h-3.5 text-amber-400" />
                 <span className="text-[10px] font-semibold text-neutral-300 tracking-wider uppercase font-mono">Terenkripsi End-To-End</span>
               </div>
-              <div className="text-right flex items-center space-x-1.5">
-                <Circle className="w-2.5 h-2.5 text-emerald-500 fill-current animate-ping" />
-                <span className="text-xs font-mono font-bold text-neutral-300">Live</span>
+              <div className="flex items-center space-x-2">
+                {/* Connection quality indicator */}
+                <div className="flex items-center space-x-1.5 bg-neutral-900/60 backdrop-blur px-2 py-1 rounded-full border border-neutral-800">
+                  {getConnectionIcon()}
+                  <span className="text-[9px] font-mono text-neutral-400 uppercase">
+                    {connectionState === 'connected' ? 'P2P' : connectionState}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <Circle className="w-2.5 h-2.5 text-emerald-500 fill-current animate-ping" />
+                  <span className="text-xs font-mono font-bold text-neutral-300">Live</span>
+                </div>
               </div>
             </div>
 
@@ -143,29 +237,40 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
               {activeCall.type === 'video' ? (
                 /* VIDEO CALL LAYOUT */
                 <div className="w-full h-full max-h-[60vh] max-w-sm rounded-3xl overflow-hidden relative border border-neutral-800 shadow-2xl bg-neutral-900">
-                  {/* Remote user simulation image */}
-                  <img
-                    src={activeCall.avatar}
-                    alt={activeCall.userName}
-                    className={`w-full h-full object-cover transition-all ${isBackgroundBlurred ? 'blur-md' : ''}`}
-                  />
+                  {/* Remote video stream */}
+                  {remoteStream ? (
+                    <video
+                      ref={remoteVideoRef}
+                      autoPlay
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-neutral-900">
+                      <div className="flex flex-col items-center space-y-4">
+                        <img
+                          src={activeCall.avatar}
+                          alt={activeCall.userName}
+                          className="w-24 h-24 rounded-full object-cover border-4 border-neutral-700"
+                        />
+                        <p className="text-sm text-neutral-400 font-mono animate-pulse">
+                          {activeCall.isIncoming ? 'Menunggu jawaban...' : 'Menghubungkan video...'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Local video feed PIP (Picture-In-Picture) */}
-                  {isCameraOn && (
+                  {isCameraOn && localStream && (
                     <div className="absolute top-4 right-4 w-28 h-40 bg-neutral-950 rounded-2xl border-2 border-amber-400 overflow-hidden shadow-lg z-10 transition-transform hover:scale-105">
-                      <div className="relative w-full h-full bg-neutral-900">
-                        {/* Simulated client camera view */}
-                        <div className="absolute inset-0 bg-neutral-800 flex items-center justify-center">
-                          <img
-                            src="https://images.unsplash.com/photo-1589656966895-2f33e7653819?w=150&auto=format&fit=crop&q=80"
-                            alt="Self Camera"
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="absolute bottom-2 left-2 bg-black/40 px-1.5 py-0.5 rounded text-[8px] font-mono">
-                          {cameraDirection === 'front' ? 'Kamera Depan' : 'Kamera Belakang'}
-                        </div>
-                      </div>
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover mirror"
+                        style={{ transform: 'scaleX(-1)' }}
+                      />
                     </div>
                   )}
 
@@ -176,7 +281,7 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
                         {activeCall.userName} <span className="text-xs font-normal text-amber-400 ml-2">({activeCall.type})</span>
                       </h3>
                       <p className="text-xs text-neutral-300 font-mono mt-1">
-                        {activeCall.isIncoming ? 'Panggilan Masuk...' : formatTimer(callTimer)}
+                        {getStatusText()}
                       </p>
                     </div>
                   </div>
@@ -186,8 +291,15 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
                 <div className="flex flex-col items-center">
                   <div className="relative flex items-center justify-center w-40 h-40">
                     {/* Animated waves */}
-                    <div className="absolute inset-0 border border-amber-400/20 rounded-full animate-ping scale-150" style={{ animationDuration: '3s' }} />
-                    <div className="absolute inset-0 border border-amber-400/40 rounded-full animate-ping scale-110" style={{ animationDuration: '2s' }} />
+                    {connectionState === 'connected' && (
+                      <>
+                        <div className="absolute inset-0 border border-amber-400/20 rounded-full animate-ping scale-150" style={{ animationDuration: '3s' }} />
+                        <div className="absolute inset-0 border border-amber-400/40 rounded-full animate-ping scale-110" style={{ animationDuration: '2s' }} />
+                      </>
+                    )}
+                    {connectionState !== 'connected' && (
+                      <div className="absolute inset-0 border-2 border-amber-400/30 rounded-full animate-pulse scale-125" />
+                    )}
                     
                     <img
                       src={activeCall.avatar}
@@ -198,7 +310,7 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
 
                   <h3 className="text-2xl font-extrabold mt-8 text-neutral-100">{activeCall.userName}</h3>
                   <p className="text-sm font-mono text-amber-400 mt-2 font-bold uppercase tracking-wider">
-                    {activeCall.isIncoming ? 'Panggilan Suara Masuk...' : `Panggilan Suara • ${formatTimer(callTimer)}`}
+                    {activeCall.type === 'voice' ? 'Panggilan Suara' : 'Video Call'} • {getStatusText()}
                   </p>
                 </div>
               )}
@@ -207,35 +319,17 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
             {/* CALL CONTROLS TRAY */}
             <div className="p-8 bg-gradient-to-t from-black to-neutral-900 border-t border-neutral-800 rounded-t-3xl flex flex-col items-center space-y-6">
               {/* Additional Toggles for Video call */}
-              {activeCall.type === 'video' && (
+              {activeCall.type === 'video' && !activeCall.isIncoming && (
                 <div className="flex space-x-3.5 bg-neutral-950 p-2 rounded-2xl border border-neutral-800/40">
                   <button
-                    onClick={() => setCameraDirection(prev => prev === 'front' ? 'back' : 'front')}
-                    className="p-3 bg-neutral-900 hover:bg-neutral-800 rounded-xl transition-all text-xs flex flex-col items-center space-y-1 cursor-pointer"
-                    title="Putar Kamera"
-                  >
-                    <Camera className="w-4 h-4 text-neutral-400" />
-                    <span className="text-[9px] font-mono">Rotasi</span>
-                  </button>
-
-                  <button
-                    onClick={() => setIsBackgroundBlurred(prev => !prev)}
+                    onClick={handleToggleCamera}
                     className={`p-3 rounded-xl transition-all text-xs flex flex-col items-center space-y-1 cursor-pointer ${
-                      isBackgroundBlurred ? 'bg-amber-400 text-neutral-950 font-bold' : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
+                      isCameraOn ? 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800' : 'bg-red-500/20 text-red-400 border border-red-500/30'
                     }`}
+                    title="Kamera"
                   >
-                    <Users className="w-4 h-4" />
-                    <span className="text-[9px] font-mono">Blur</span>
-                  </button>
-
-                  <button
-                    onClick={() => setIsScreenSharing(prev => !prev)}
-                    className={`p-3 rounded-xl transition-all text-xs flex flex-col items-center space-y-1 cursor-pointer ${
-                      isScreenSharing ? 'bg-amber-400 text-neutral-950 font-bold' : 'bg-neutral-900 text-neutral-400 hover:bg-neutral-800'
-                    }`}
-                  >
-                    <Monitor className="w-4 h-4" />
-                    <span className="text-[9px] font-mono">Bagikan</span>
+                    {isCameraOn ? <Camera className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
+                    <span className="text-[9px] font-mono">{isCameraOn ? 'Kamera' : 'Mati'}</span>
                   </button>
                 </div>
               )}
@@ -244,7 +338,7 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
               <div className="flex items-center space-x-6">
                 {/* Mute button */}
                 <button
-                  onClick={() => setIsMuted(prev => !prev)}
+                  onClick={handleToggleMute}
                   className={`p-4 rounded-full transition-all cursor-pointer ${
                     isMuted ? 'bg-neutral-800 text-red-500 border border-red-500/30' : 'bg-neutral-900 text-white hover:bg-neutral-800'
                   }`}
@@ -253,22 +347,18 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
                   {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                 </button>
 
-                {activeCall.isIncoming ? (
+                {activeCall.isIncoming && connectionState !== 'connected' ? (
                   /* INCOMING CALL ACTIONS */
                   <div className="flex space-x-4">
                     <button
-                      onClick={onEndCall}
+                      onClick={onRejectCall}
                       className="p-5 bg-red-600 hover:bg-red-700 text-white rounded-full transition-all shadow-lg shadow-red-600/20 cursor-pointer"
                     >
                       <PhoneOff className="w-7 h-7" />
                     </button>
                     <button
-                      onClick={() => {
-                        // Accept the call
-                        activeCall.isIncoming = false;
-                        setCallTimer(0);
-                      }}
-                      className="p-5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
+                      onClick={onAnswerCall}
+                      className="p-5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full transition-all shadow-lg shadow-emerald-500/20 cursor-pointer animate-pulse"
                     >
                       <Phone className="w-7 h-7" />
                     </button>
@@ -291,7 +381,7 @@ export default function CallsView({ callLogs, activeCall, onStartCall, onEndCall
                   }`}
                   title="Speaker"
                 >
-                  <Volume2 className="w-6 h-6" />
+                  {isSpeakerOn ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
                 </button>
               </div>
             </div>

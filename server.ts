@@ -1,8 +1,10 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
+import { Server as SocketIOServer } from 'socket.io';
 import mysql from 'mysql2/promise';
 
 import {
@@ -47,7 +49,14 @@ import {
 dotenv.config();
 
 const app = express();
+const httpServer = http.createServer(app);
+const io = new SocketIOServer(httpServer, {
+  cors: { origin: '*', methods: ['GET', 'POST'] }
+});
 const PORT = 3000;
+
+// Track online socket connections: userId -> socketId
+const userSockets = new Map<string, string>();
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -88,6 +97,37 @@ app.post('/api/upload', (req, res) => {
 // Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', apiInitialized: !!ai });
+});
+
+// ICE Server Configuration (TURN/STUN)
+app.get('/api/ice-config', (req, res) => {
+  const turnHost = process.env.TURN_HOST || '';
+  const turnPort = process.env.TURN_PORT || '3478';
+  const turnUsername = process.env.TURN_USERNAME || '';
+  const turnPassword = process.env.TURN_PASSWORD || '';
+
+  const iceServers: any[] = [];
+
+  if (turnHost) {
+    iceServers.push(
+      { urls: `stun:${turnHost}:${turnPort}` },
+      {
+        urls: `turn:${turnHost}:${turnPort}`,
+        username: turnUsername,
+        credential: turnPassword
+      },
+      {
+        urls: `turn:${turnHost}:${turnPort}?transport=tcp`,
+        username: turnUsername,
+        credential: turnPassword
+      }
+    );
+  }
+
+  // Always include Google STUN as fallback
+  iceServers.push({ urls: 'stun:stun.l.google.com:19302' });
+
+  res.json({ iceServers });
 });
 
 // Config
@@ -1115,6 +1155,104 @@ app.post('/api/ai/speech', async (req, res) => {
   }
 });
 
+// --- SOCKET.IO SIGNALING FOR WEBRTC CALLS ---
+
+io.on('connection', (socket) => {
+  console.log(`[Socket.IO] Client connected: ${socket.id}`);
+
+  // Register user's socket
+  socket.on('register', (userId: string) => {
+    userSockets.set(userId, socket.id);
+    socket.data.userId = userId;
+    console.log(`[Socket.IO] User registered: ${userId} -> ${socket.id}`);
+  });
+
+  // Caller sends an offer to a target user
+  socket.on('call-offer', (data: {
+    targetUserId: string;
+    callerId: string;
+    callerName: string;
+    callerAvatar: string;
+    callType: 'voice' | 'video';
+    sdpOffer: RTCSessionDescriptionInit;
+  }) => {
+    const targetSocketId = userSockets.get(data.targetUserId);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call-incoming', {
+        callerId: data.callerId,
+        callerName: data.callerName,
+        callerAvatar: data.callerAvatar,
+        callType: data.callType,
+        sdpOffer: data.sdpOffer
+      });
+      console.log(`[Socket.IO] Call offer from ${data.callerId} to ${data.targetUserId}`);
+    } else {
+      // Target user is offline
+      socket.emit('call-unavailable', { targetUserId: data.targetUserId });
+      console.log(`[Socket.IO] Target user ${data.targetUserId} is offline`);
+    }
+  });
+
+  // Receiver sends answer back to caller
+  socket.on('call-answer', (data: {
+    callerId: string;
+    sdpAnswer: RTCSessionDescriptionInit;
+  }) => {
+    const callerSocketId = userSockets.get(data.callerId);
+    if (callerSocketId) {
+      io.to(callerSocketId).emit('call-answered', {
+        answererId: socket.data.userId,
+        sdpAnswer: data.sdpAnswer
+      });
+      console.log(`[Socket.IO] Call answered by ${socket.data.userId} to ${data.callerId}`);
+    }
+  });
+
+  // ICE candidate exchange
+  socket.on('ice-candidate', (data: {
+    targetUserId: string;
+    candidate: RTCIceCandidateInit;
+  }) => {
+    const targetSocketId = userSockets.get(data.targetUserId);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('ice-candidate', {
+        fromUserId: socket.data.userId,
+        candidate: data.candidate
+      });
+    }
+  });
+
+  // Call rejected by receiver
+  socket.on('call-reject', (data: { callerId: string }) => {
+    const callerSocketId = userSockets.get(data.callerId);
+    if (callerSocketId) {
+      io.to(callerSocketId).emit('call-rejected', {
+        rejectedBy: socket.data.userId
+      });
+      console.log(`[Socket.IO] Call rejected by ${socket.data.userId}`);
+    }
+  });
+
+  // Call ended by either party
+  socket.on('call-end', (data: { targetUserId: string }) => {
+    const targetSocketId = userSockets.get(data.targetUserId);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call-ended', {
+        endedBy: socket.data.userId
+      });
+      console.log(`[Socket.IO] Call ended by ${socket.data.userId}`);
+    }
+  });
+
+  // Cleanup on disconnect
+  socket.on('disconnect', () => {
+    if (socket.data.userId) {
+      userSockets.delete(socket.data.userId);
+      console.log(`[Socket.IO] User disconnected: ${socket.data.userId}`);
+    }
+  });
+});
+
 // --- VITE AND SERVER BOOT ---
 
 async function startServer() {
@@ -1159,8 +1297,9 @@ async function startServer() {
     console.log('Production static file serving initialized.');
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`BeeChat server is actively buzzing on http://localhost:${PORT}`);
+    console.log(`[Socket.IO] WebRTC signaling server ready on port ${PORT}`);
   });
 }
 
