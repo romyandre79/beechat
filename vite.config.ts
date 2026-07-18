@@ -23,6 +23,8 @@ export default defineConfig(() => {
       // Do not modifyâ€”file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true' ? {
         protocol: 'wss',
+        host: 'beechat.duckdns.org',
+        port: 443,
         clientPort: 443
       } : false,
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
