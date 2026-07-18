@@ -1394,8 +1394,27 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* CALL DIALOG FOR ACTIVE CALL (FOR OUTGOING CALL SOUND OR SCREEN ACTION) */}
-      {/* We already render the CallsView overlay when activeCall is set. */}
+      {/* CALL DIALOG FOR ACTIVE CALL (Rendered globally like WhatsApp popup/screen) */}
+      <AnimatePresence>
+        {activeCall && (
+          <div className="fixed inset-0 z-50">
+            <CallsView
+              callLogs={callLogs}
+              activeCall={activeCall}
+              onStartCall={(uid, uname, av, type) => handleStartCall(uid, uname, av, type)}
+              onEndCall={handleEndCall}
+              onAnswerCall={handleAnswerCall}
+              onRejectCall={handleRejectCall}
+              localStream={localStream}
+              remoteStream={remoteStream}
+              connectionState={webrtcConnectionState}
+              onToggleMute={handleToggleMute}
+              onToggleCamera={handleToggleCamera}
+              activeCallOnly={true}
+            />
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
