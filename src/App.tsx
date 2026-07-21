@@ -615,7 +615,6 @@ export default function App() {
         callStartTimeRef.current = Date.now();
       },
       onCallEnded: (reason) => {
-        console.log('[App] Call ended, reason:', reason);
         // Save call log before clearing state
         setActiveCall(prev => {
           if (prev && currentUser) {
@@ -964,8 +963,8 @@ export default function App() {
                     setActiveChatId(null); // Clear active chat on tab shift on small views
                   }}
                   className={`p-3 rounded-xl transition-all cursor-pointer flex flex-col items-center ${activeTab === item.tab
-                      ? 'bg-amber-400 text-neutral-950 shadow-md shadow-amber-400/10'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                    ? 'bg-amber-400 text-neutral-950 shadow-md shadow-amber-400/10'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
                     }`}
                   title={item.label}
                 >
@@ -1080,7 +1079,6 @@ export default function App() {
                             m => m.chatId === chat.id && m.senderId !== currentUser?.id && m.status !== 'read'
                           ).length;
                           const cleanedChatName = cleanName(chat.name);
-                          console.log('BeeChat Debug - ID:', chat.id, 'Original:', JSON.stringify(chat.name), 'Cleaned:', JSON.stringify(cleanedChatName), 'unreadCount:', unreadCount);
 
                           return (
                             <div

@@ -407,7 +407,7 @@ app.post('/api/chats', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (id) DO NOTHING
     `, [id, name, avatar, isGroup, isPinned, isArchived, type, description, lastMessage, lastMessageTime ? new Date(lastMessageTime) : null]);
-    
+
     if (members && Array.isArray(members)) {
       for (const userId of members) {
         await dbQuery(`
@@ -423,16 +423,16 @@ app.post('/api/chats', async (req, res) => {
         `, [id, userId]);
       }
     }
-    
+
     // Immediately refresh cache for all members to prevent disappearance on next poll
     if (members && Array.isArray(members)) {
       for (const userId of members) {
-        await refreshChatsCache(String(userId)).catch(() => {});
+        await refreshChatsCache(String(userId)).catch(() => { });
       }
     } else {
       invalidateChatsCache();
     }
-    
+
     res.json({ success: true });
   } catch (err: any) {
     console.error(err);
@@ -446,14 +446,14 @@ app.delete('/api/chats/:id', async (req, res) => {
   const { userId } = req.query;
   try {
     // Delete message reactions for messages in this chat
-    await dbQuery(`DELETE FROM message_reactions WHERE message_id IN (SELECT id FROM messages WHERE chat_id = $1)`, [id]).catch(() => {});
+    await dbQuery(`DELETE FROM message_reactions WHERE message_id IN (SELECT id FROM messages WHERE chat_id = $1)`, [id]).catch(() => { });
     // Delete poll votes for messages in this chat
-    await dbQuery(`DELETE FROM poll_votes WHERE option_id IN (SELECT po.id FROM poll_options po JOIN messages m ON po.message_id = m.id WHERE m.chat_id = $1)`, [id]).catch(() => {});
+    await dbQuery(`DELETE FROM poll_votes WHERE option_id IN (SELECT po.id FROM poll_options po JOIN messages m ON po.message_id = m.id WHERE m.chat_id = $1)`, [id]).catch(() => { });
     // Delete poll options for messages in this chat
-    await dbQuery(`DELETE FROM poll_options WHERE message_id IN (SELECT id FROM messages WHERE chat_id = $1)`, [id]).catch(() => {});
+    await dbQuery(`DELETE FROM poll_options WHERE message_id IN (SELECT id FROM messages WHERE chat_id = $1)`, [id]).catch(() => { });
     // Delete all messages in this chat
     await dbQuery('DELETE FROM messages WHERE chat_id = $1', [id]);
-    
+
     // Reset last message in chat instead of deleting the chat room
     await dbQuery('UPDATE chats SET last_message = NULL, last_message_time = NULL WHERE id = $1', [id]);
 
@@ -467,8 +467,8 @@ app.delete('/api/chats/:id', async (req, res) => {
     }
 
     if (userId) {
-      refreshChatsCache(String(userId)).catch(() => {});
-      refreshMessagesCache(String(userId)).catch(() => {});
+      refreshChatsCache(String(userId)).catch(() => { });
+      refreshMessagesCache(String(userId)).catch(() => { });
     }
 
     res.json({ success: true });
@@ -488,7 +488,7 @@ app.get('/api/chats/:id/members', async (req, res) => {
       JOIN chat_members cm ON u.id = cm.user_id
       WHERE cm.chat_id = $1
     `, [id]);
-    
+
     const members = result.rows.map((m: any) => {
       if (m.lastSeen) m.lastSeen = parseDbDate(m.lastSeen);
       return m;
@@ -507,28 +507,28 @@ app.post('/api/chats/:id/members', async (req, res) => {
   if (!userId) return res.status(400).json({ error: 'Missing userId parameter' });
   try {
     await dbQuery('INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, userId]);
-    
+
     // Add a system message: "[User] bergabung ke grup"
     const userRes = await dbQuery('SELECT name FROM users WHERE id = $1', [userId]);
     const userName = userRes.rows[0]?.name || userId;
     const sysMsgId = 'm_sys_' + Date.now();
-    
+
     await dbQuery(`
       INSERT INTO messages (id, chat_id, sender_id, text, type, timestamp, status)
       VALUES ($1, $2, 'system', $3, 'system', NOW(), 'read')
     `, [sysMsgId, id, `${userName} bergabung ke grup`]);
-    
+
     // Invalidate caches
     invalidateChatsCache();
     invalidateMessagesCache();
-    
+
     // Refresh for all members
     const membersRes = await dbQuery('SELECT user_id FROM chat_members WHERE chat_id = $1', [id]);
     for (const mRow of membersRes.rows) {
-      refreshChatsCache(mRow.user_id).catch(() => {});
-      refreshMessagesCache(mRow.user_id).catch(() => {});
+      refreshChatsCache(mRow.user_id).catch(() => { });
+      refreshMessagesCache(mRow.user_id).catch(() => { });
     }
-    
+
     res.json({ success: true });
   } catch (err: any) {
     console.error('Error adding chat member:', err);
@@ -541,31 +541,31 @@ app.delete('/api/chats/:id/members/:userId', async (req, res) => {
   const { id, userId } = req.params;
   try {
     await dbQuery('DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2', [id, userId]);
-    
+
     // Add a system message: "[User] dikeluarkan dari grup"
     const userRes = await dbQuery('SELECT name FROM users WHERE id = $1', [userId]);
     const userName = userRes.rows[0]?.name || userId;
     const sysMsgId = 'm_sys_' + Date.now();
-    
+
     await dbQuery(`
       INSERT INTO messages (id, chat_id, sender_id, text, type, timestamp, status)
       VALUES ($1, $2, 'system', $3, 'system', NOW(), 'read')
     `, [sysMsgId, id, `${userName} dikeluarkan dari grup`]);
-    
+
     // Invalidate caches
     invalidateChatsCache();
     invalidateMessagesCache();
-    
+
     // Refresh for all remaining members
     const membersRes = await dbQuery('SELECT user_id FROM chat_members WHERE chat_id = $1', [id]);
     for (const mRow of membersRes.rows) {
-      refreshChatsCache(mRow.user_id).catch(() => {});
-      refreshMessagesCache(mRow.user_id).catch(() => {});
+      refreshChatsCache(mRow.user_id).catch(() => { });
+      refreshMessagesCache(mRow.user_id).catch(() => { });
     }
     // Also refresh for the kicked user
-    refreshChatsCache(userId).catch(() => {});
-    refreshMessagesCache(userId).catch(() => {});
-    
+    refreshChatsCache(userId).catch(() => { });
+    refreshMessagesCache(userId).catch(() => { });
+
     res.json({ success: true });
   } catch (err: any) {
     console.error('Error removing chat member:', err);
@@ -623,10 +623,10 @@ app.post('/api/messages', async (req, res) => {
     // Refresh messages and chats cache immediately for all members of this chat
     const membersRes = await dbQuery('SELECT user_id FROM chat_members WHERE chat_id = $1', [chatId]);
     for (const mRow of membersRes.rows) {
-      refreshMessagesCache(mRow.user_id).catch(() => {});
-      refreshChatsCache(mRow.user_id).catch(() => {});
+      refreshMessagesCache(mRow.user_id).catch(() => { });
+      refreshChatsCache(mRow.user_id).catch(() => { });
     }
-    
+
     res.json({ success: true });
   } catch (err: any) {
     console.error(err);
@@ -660,13 +660,13 @@ app.post('/api/messages/read', async (req, res) => {
       if (updateRes.rows.length > 0) {
         const membersRes = await dbQuery('SELECT user_id FROM chat_members WHERE chat_id = $1', [chatId]);
         for (const mRow of membersRes.rows) {
-          refreshMessagesCache(mRow.user_id).catch(() => {});
-          refreshChatsCache(mRow.user_id).catch(() => {});
+          refreshMessagesCache(mRow.user_id).catch(() => { });
+          refreshChatsCache(mRow.user_id).catch(() => { });
         }
       }
       return res.json({ success: true, count: updateRes.rows.length });
     }
-    
+
     res.json({ success: true, count: 0 });
   } catch (err: any) {
     console.error('Error marking messages as read:', err);
@@ -690,14 +690,14 @@ app.post('/api/messages/:messageId/vote', async (req, res) => {
     } else {
       await dbQuery('INSERT INTO poll_votes (option_id, user_id) VALUES ($1, $2)', [optionId, userId]);
     }
-    
+
     // Find the chatId of the poll message and refresh cache for all members
     const msgRes = await dbQuery('SELECT chat_id FROM messages WHERE id = (SELECT message_id FROM poll_options WHERE id = $1)', [optionId]);
     if (msgRes.rows.length > 0) {
       const chatId = msgRes.rows[0].chat_id;
       const membersRes = await dbQuery('SELECT user_id FROM chat_members WHERE chat_id = $1', [chatId]);
       for (const mRow of membersRes.rows) {
-        refreshMessagesCache(mRow.user_id).catch(() => {});
+        refreshMessagesCache(mRow.user_id).catch(() => { });
       }
     } else {
       invalidateMessagesCache();
@@ -726,14 +726,14 @@ app.post('/api/messages/:messageId/react', async (req, res) => {
     } else {
       await dbQuery('INSERT INTO message_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3)', [messageId, userId, emoji]);
     }
-    
+
     // Find the chatId of the reaction and refresh cache for all members
     const msgRes = await dbQuery('SELECT chat_id FROM messages WHERE id = $1', [messageId]);
     if (msgRes.rows.length > 0) {
       const chatId = msgRes.rows[0].chat_id;
       const membersRes = await dbQuery('SELECT user_id FROM chat_members WHERE chat_id = $1', [chatId]);
       for (const mRow of membersRes.rows) {
-        refreshMessagesCache(mRow.user_id).catch(() => {});
+        refreshMessagesCache(mRow.user_id).catch(() => { });
       }
     } else {
       invalidateMessagesCache();
@@ -758,7 +758,7 @@ app.delete('/api/messages/:id', async (req, res) => {
     }
 
     if (userId) {
-      refreshMessagesCache(String(userId)).catch(() => {});
+      refreshMessagesCache(String(userId)).catch(() => { });
     }
     res.json({ success: true });
   } catch (err: any) {
@@ -871,7 +871,7 @@ app.post('/api/status', async (req, res) => {
       INSERT INTO status_updates (id, user_id, user_name, user_avatar, type, content, bg_style, timestamp)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `, [id, userId, userName, userAvatar, type, content, bgStyle, timestamp ? new Date(timestamp) : new Date()]);
-    
+
     invalidateStatusCache();
     refreshStatusCache();
     res.json({ success: true });
@@ -891,7 +891,7 @@ app.post('/api/calls', async (req, res) => {
   try {
     // Parse isOutgoing strictly to boolean/number based on database requirements
     const isOutgoingDbVal = typeof isOutgoing === 'boolean' ? isOutgoing : (isOutgoing === 'true' || isOutgoing === 1);
-    
+
     // Ensure the user exists in the users table to prevent Foreign Key constraints from failing
     await dbQuery(`
       INSERT INTO users (id, name, username, avatar)
@@ -903,7 +903,7 @@ app.post('/api/calls', async (req, res) => {
       INSERT INTO call_logs (id, user_id, user_name, avatar, type, is_outgoing, timestamp, status, duration)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `, [id, userId, userName, avatar, type, isOutgoingDbVal, timestamp ? new Date(timestamp) : new Date(), status, duration]);
-    
+
     invalidateCallsCache();
     refreshCallsCache();
     res.json({ success: true });
@@ -971,9 +971,9 @@ app.post('/api/ai/chat', async (req, res) => {
 
   Chat History:
   ${messages
-    .slice(-10)
-    .map((m: any) => `${m.senderName}: ${m.text}`)
-    .join('\n')}
+      .slice(-10)
+      .map((m: any) => `${m.senderName}: ${m.text}`)
+      .join('\n')}
 
   Latest Message:
   User: ${messages[messages.length - 1]?.text || ''}
@@ -994,7 +994,7 @@ app.post('/api/ai/chat', async (req, res) => {
   if (!ai || simulatedFallback) {
     const lastMsg = messages[messages.length - 1]?.text || '';
     let simText = `Bzzzt! Wah, pertanyaanmu menarik sekali, sayang! 🍯 Sebagai Ratu Lebah di BeeChat, aku selalu senang mendengar kabarmu. Semoga hari ini penuh dengan nektar kebahagiaan! Tuliskan pesan lain agar sarang kita makin ramai! 🐝💛`;
-    
+
     if (lastMsg.toLowerCase().includes('halo') || lastMsg.toLowerCase().includes('hi')) {
       simText = `Halo manis! 🐝 Ratu Lebah di sini menyapamu hangat di sarang BeeChat! Ada yang bisa kubantu hari ini? Madu segar atau tips membuat hari-harimu jadi lebih produktif? Buzz!`;
     } else if (lastMsg.toLowerCase().includes('siapa')) {
@@ -1002,7 +1002,7 @@ app.post('/api/ai/chat', async (req, res) => {
     } else if (lastMsg.toLowerCase().includes('makan') || lastMsg.toLowerCase().includes('lapar')) {
       simText = `Bzzzt! Lapar ya? Coba bayangkan nektar bunga segar yang manis dan hangat dari taman bunga BeeChat! Jangan lupa makan yang manis-manis hari ini agar energimu terisi penuh! 🌸🍯`;
     }
-    
+
     return res.json({ text: simText, simulated: true });
   }
 });
@@ -1168,13 +1168,11 @@ app.post('/api/ai/speech', async (req, res) => {
 // --- SOCKET.IO SIGNALING FOR WEBRTC CALLS ---
 
 io.on('connection', (socket) => {
-  console.log(`[Socket.IO] Client connected: ${socket.id}`);
 
   // Register user's socket
   socket.on('register', (userId: string) => {
     userSockets.set(userId, socket.id);
     socket.data.userId = userId;
-    console.log(`[Socket.IO] User registered: ${userId} -> ${socket.id}`);
   });
 
   // Caller sends an offer to a target user
@@ -1195,11 +1193,9 @@ io.on('connection', (socket) => {
         callType: data.callType,
         sdpOffer: data.sdpOffer
       });
-      console.log(`[Socket.IO] Call offer from ${data.callerId} to ${data.targetUserId}`);
     } else {
       // Target user is offline
       socket.emit('call-unavailable', { targetUserId: data.targetUserId });
-      console.log(`[Socket.IO] Target user ${data.targetUserId} is offline`);
     }
   });
 
@@ -1214,7 +1210,6 @@ io.on('connection', (socket) => {
         answererId: socket.data.userId,
         sdpAnswer: data.sdpAnswer
       });
-      console.log(`[Socket.IO] Call answered by ${socket.data.userId} to ${data.callerId}`);
     }
   });
 
@@ -1239,7 +1234,6 @@ io.on('connection', (socket) => {
       io.to(callerSocketId).emit('call-rejected', {
         rejectedBy: socket.data.userId
       });
-      console.log(`[Socket.IO] Call rejected by ${socket.data.userId}`);
     }
   });
 
@@ -1250,7 +1244,6 @@ io.on('connection', (socket) => {
       io.to(targetSocketId).emit('call-ended', {
         endedBy: socket.data.userId
       });
-      console.log(`[Socket.IO] Call ended by ${socket.data.userId}`);
     }
   });
 
@@ -1258,7 +1251,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     if (socket.data.userId) {
       userSockets.delete(socket.data.userId);
-      console.log(`[Socket.IO] User disconnected: ${socket.data.userId}`);
     }
   });
 });
@@ -1269,24 +1261,19 @@ async function startServer() {
   try {
     if (process.env.DB_DRIVER === 'MySQL') {
       await ensureMySQLDatabaseExists();
-      console.log('Verifying connection to remote MariaDB/MySQL database...');
       const connection = await mysqlPool!.getConnection();
       connection.release();
-      console.log('MariaDB/MySQL database connection verified successfully.');
     } else {
-      console.log('Verifying connection to remote PostgreSQL database...');
       const client = await pool.connect();
       client.release();
-      console.log('Database connection verified successfully.');
     }
-    
+
     await initDb();
-    
-    refreshStatusCache().catch(() => {});
-    refreshCallsCache().catch(() => {});
-    refreshCommunitiesCache().catch(() => {});
+
+    refreshStatusCache().catch(() => { });
+    refreshCallsCache().catch(() => { });
+    refreshCommunitiesCache().catch(() => { });
   } catch (err: any) {
-    console.warn('⚠️ WARNING: Remote database connection failed. Enabling in-memory offline fallback mode.', err.message);
     setDatabaseOffline(true);
     seedLocalDbMockup();
   }
@@ -1297,19 +1284,15 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-    console.log('Vite development middleware mounted.');
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
-    console.log('Production static file serving initialized.');
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`BeeChat server is actively buzzing on http://localhost:${PORT}`);
-    console.log(`[Socket.IO] WebRTC signaling server ready on port ${PORT}`);
   });
 }
 

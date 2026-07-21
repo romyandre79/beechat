@@ -17,12 +17,9 @@ if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
         },
       },
     });
-    console.log('Gemini AI successfully initialized server-side.');
   } catch (err) {
-    console.error('Failed to initialize Gemini AI:', err);
   }
 } else {
-  console.log('No valid GEMINI_API_KEY found. Server will run with simulation mode for AI actions.');
 }
 
 // Reusable content generator with model fallback list
@@ -41,7 +38,7 @@ export async function generateAiContentWithFallback(prompt: string, responseMime
   let lastError: any = null;
   for (const modelName of GEMINI_MODELS) {
     try {
-      console.log(`Attempting AI generation with model: ${modelName}...`);
+      //console.log(`Attempting AI generation with model: ${modelName}...`);
       const options: any = {
         model: modelName,
         contents: prompt,
@@ -51,11 +48,11 @@ export async function generateAiContentWithFallback(prompt: string, responseMime
       }
       const response = await ai.models.generateContent(options);
       if (response && response.text) {
-        console.log(`AI generation successful with model: ${modelName}`);
+        //console.log(`AI generation successful with model: ${modelName}`);
         return response.text;
       }
     } catch (err: any) {
-      console.warn(`Model ${modelName} failed or unavailable:`, err.message || err);
+      //console.warn(`Model ${modelName} failed or unavailable:`, err.message || err);
       lastError = err;
     }
   }

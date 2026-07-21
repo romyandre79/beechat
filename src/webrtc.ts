@@ -53,10 +53,8 @@ export class WebRTCService {
       if (res.ok) {
         const data = await res.json();
         this.iceServers = data.iceServers || [];
-        console.log('[WebRTC] ICE servers loaded:', this.iceServers.length);
       }
     } catch (err) {
-      console.warn('[WebRTC] Failed to load ICE config, using defaults:', err);
       this.iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
     }
 
@@ -70,12 +68,10 @@ export class WebRTCService {
     });
 
     this.socket.on('connect', () => {
-      console.log('[WebRTC] Socket.IO connected:', this.socket?.id);
       this.socket?.emit('register', this.currentUserId);
     });
 
     this.socket.on('reconnect', () => {
-      console.log('[WebRTC] Socket.IO reconnected, re-registering...');
       this.socket?.emit('register', this.currentUserId);
     });
 
@@ -87,7 +83,6 @@ export class WebRTCService {
       callType: 'voice' | 'video';
       sdpOffer: RTCSessionDescriptionInit;
     }) => {
-      console.log('[WebRTC] Incoming call from:', data.callerId);
       this.pendingOffer = data.sdpOffer;
       this.pendingCallType = data.callType;
       this.currentTargetUserId = data.callerId;
@@ -104,7 +99,6 @@ export class WebRTCService {
       answererId: string;
       sdpAnswer: RTCSessionDescriptionInit;
     }) => {
-      console.log('[WebRTC] Call answered by:', data.answererId);
       try {
         if (this.peerConnection && this.peerConnection.signalingState === 'have-local-offer') {
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdpAnswer));
@@ -113,7 +107,6 @@ export class WebRTCService {
           this.callbacks?.onCallConnected();
         }
       } catch (err) {
-        console.error('[WebRTC] Error setting remote answer:', err);
       }
     });
 
@@ -130,27 +123,23 @@ export class WebRTCService {
           this.pendingIceCandidates.push(data.candidate);
         }
       } catch (err) {
-        console.error('[WebRTC] Error adding ICE candidate:', err);
       }
     });
 
     // Handle call rejected
     this.socket.on('call-rejected', () => {
-      console.log('[WebRTC] Call was rejected');
       this.cleanup();
       this.callbacks?.onCallEnded('rejected');
     });
 
     // Handle call ended by remote
     this.socket.on('call-ended', () => {
-      console.log('[WebRTC] Call ended by remote');
       this.cleanup();
       this.callbacks?.onCallEnded('remote-hangup');
     });
 
     // Handle target unavailable
     this.socket.on('call-unavailable', () => {
-      console.log('[WebRTC] Target user is unavailable');
       this.cleanup();
       this.callbacks?.onCallEnded('unavailable');
     });
@@ -171,7 +160,6 @@ export class WebRTCService {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       const errMsg = 'Akses kamera/mikrofon diblokir oleh browser karena koneksi tidak aman (HTTP). Silakan gunakan HTTPS atau localhost untuk melakukan panggilan WebRTC! 🐝';
       alert(errMsg);
-      console.error('[WebRTC]', errMsg);
       this.callbacks?.onCallEnded('error');
       return null;
     }
@@ -208,10 +196,8 @@ export class WebRTCService {
         sdpOffer: offer
       });
 
-      console.log('[WebRTC] Call offer sent to:', targetUserId);
       return this.localStream;
     } catch (err: any) {
-      console.error('[WebRTC] Error starting call:', err);
       this.cleanup();
       this.callbacks?.onCallEnded('error');
       return null;
@@ -267,10 +253,8 @@ export class WebRTCService {
 
       this.pendingOffer = null;
       this.callbacks?.onCallConnected();
-      console.log('[WebRTC] Call answered successfully');
       return this.localStream;
     } catch (err: any) {
-      console.error('[WebRTC] Error answering call:', err);
       this.cleanup();
       this.callbacks?.onCallEnded('error');
       return null;
@@ -347,7 +331,6 @@ export class WebRTCService {
     this.remoteStream = new MediaStream();
 
     this.peerConnection.ontrack = (event) => {
-      console.log('[WebRTC] Remote track received:', event.track.kind);
       event.streams[0].getTracks().forEach(track => {
         this.remoteStream!.addTrack(track);
       });
@@ -367,16 +350,13 @@ export class WebRTCService {
     // Connection state monitoring
     this.peerConnection.onconnectionstatechange = () => {
       const state = this.peerConnection?.connectionState || 'unknown';
-      console.log('[WebRTC] Connection state:', state);
       this.callbacks?.onConnectionStateChange(state);
 
       if (state === 'failed' || state === 'disconnected') {
-        console.warn('[WebRTC] Connection failed/disconnected');
       }
     };
 
     this.peerConnection.oniceconnectionstatechange = () => {
-      console.log('[WebRTC] ICE connection state:', this.peerConnection?.iceConnectionState);
     };
   }
 
