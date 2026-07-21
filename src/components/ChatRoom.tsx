@@ -228,7 +228,52 @@ export default function ChatRoom({
       return;
     }
 
-    const audio = new Audio(voiceMsg.text);
+    // Determine audio URL path
+    const isUrl = voiceMsg.text.startsWith('http') || voiceMsg.text.startsWith('/uploads') || voiceMsg.text.startsWith('blob:');
+    let audioUrl = voiceMsg.text;
+    if (isUrl && !voiceMsg.text.startsWith('http') && !voiceMsg.text.startsWith('blob:')) {
+      audioUrl = API_BASE + (voiceMsg.text.startsWith('/') ? '' : '/') + voiceMsg.text;
+    }
+
+    if (!isUrl) {
+      // Legacy or mock voice note: synthesize simple pleasant honey bee beep using Web Audio API
+      try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, ctx.currentTime); // A4 tone
+          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.8);
+          gain.gain.setValueAtTime(0.1, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.8);
+        }
+      } catch (e) {
+        console.error('Audio synth error:', e);
+      }
+
+      setVoicePlaybackDuration(voiceMsg.duration || 2);
+      const startTime = Date.now();
+      const interval = setInterval(() => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        if (elapsed >= (voiceMsg.duration || 2)) {
+          clearInterval(interval);
+          setPlayingVoiceId(null);
+          setVoicePlaybackTime(0);
+        } else {
+          setVoicePlaybackTime(elapsed);
+        }
+      }, 100);
+
+      return () => clearInterval(interval);
+    }
+
+    const audio = new Audio(audioUrl);
     audioInstanceRef.current = audio;
 
     const onTimeUpdate = () => {
@@ -244,9 +289,16 @@ export default function ChatRoom({
       setVoicePlaybackTime(0);
     };
 
+    const onError = (e: Event) => {
+      console.error('Audio playback failed error event:', e);
+      alert('Bzzzt! Gagal memutar berkas rekaman suara. File mungkin telah dihapus atau URL tidak dapat diakses.');
+      setPlayingVoiceId(null);
+    };
+
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
 
     audio.play().catch(err => {
       console.error('Audio playback failed:', err);
@@ -257,6 +309,7 @@ export default function ChatRoom({
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
       audio.pause();
     };
   }, [playingVoiceId, messages]);
@@ -1075,7 +1128,7 @@ export default function ChatRoom({
                   }`}
                 >
                   {/* Sender Name for Group Chats */}
-                  {chat.isGroup && !isMe && msg.type !== 'system' && (
+                  {Boolean(chat.isGroup) && !isMe && msg.type !== 'system' && (
                     <div className="text-[10px] font-extrabold text-amber-400 mb-1 font-sans">
                       {senderName}
                     </div>
