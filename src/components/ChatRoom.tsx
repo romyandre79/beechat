@@ -185,6 +185,14 @@ export default function ChatRoom({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
+  const [cameraQuality, setCameraQuality] = useState<'low' | 'hd'>('low');
+  const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
+  const [videoRecording, setVideoRecording] = useState(false);
+  const [videoRecordingSeconds, setVideoRecordingSeconds] = useState(0);
+  const [recordedVideoBlob, setRecordedVideoBlob] = useState<Blob | null>(null);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
+  const cameraRecorderRef = useRef<MediaRecorder | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   
@@ -867,19 +875,100 @@ export default function ChatRoom({
     }
   };
 
+  // Video Recording Timer Effect
+  useEffect(() => {
+    let timer: any;
+    if (videoRecording) {
+      setVideoRecordingSeconds(0);
+      timer = setInterval(() => {
+        setVideoRecordingSeconds(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [videoRecording]);
+
   // Camera Helper Functions
+  const restartCameraStream = async (newFacingMode?: 'user' | 'environment', newQuality?: 'low' | 'hd', newMode?: 'photo' | 'video') => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+    setCameraStream(null);
+
+    const facing = newFacingMode || cameraFacingMode;
+    const quality = newQuality || cameraQuality;
+    const mode = newMode || cameraMode;
+
+    const videoConstraints: MediaTrackConstraints = {
+      facingMode: facing
+    };
+
+    if (quality === 'hd') {
+      videoConstraints.width = { ideal: 1920, max: 1920 };
+      videoConstraints.height = { ideal: 1080, max: 1080 };
+    } else {
+      videoConstraints.width = { ideal: 640, max: 640 };
+      videoConstraints.height = { ideal: 480, max: 480 };
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints,
+        audio: mode === 'video' ? true : false
+      });
+      setCameraStream(stream);
+    } catch (err) {
+      console.error('Failed to restart camera stream:', err);
+      try {
+        const streamOnlyVideo = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing }
+        });
+        setCameraStream(streamOnlyVideo);
+      } catch (e) {
+        alert('Gagal merefresh stream kamera.');
+      }
+    }
+  };
+
   const openCamera = async () => {
     setShowCameraModal(true);
     setCapturedPhoto(null);
+    setRecordedVideoBlob(null);
+    if (recordedVideoUrl) {
+      URL.revokeObjectURL(recordedVideoUrl);
+      setRecordedVideoUrl(null);
+    }
+    setVideoRecording(false);
+
+    const videoConstraints: MediaTrackConstraints = {
+      facingMode: cameraFacingMode
+    };
+
+    if (cameraQuality === 'hd') {
+      videoConstraints.width = { ideal: 1920, max: 1920 };
+      videoConstraints.height = { ideal: 1080, max: 1080 };
+    } else {
+      videoConstraints.width = { ideal: 640, max: 640 };
+      videoConstraints.height = { ideal: 480, max: 480 };
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: cameraFacingMode }
+        video: videoConstraints,
+        audio: cameraMode === 'video' ? true : false
       });
       setCameraStream(stream);
     } catch (err) {
       console.error('Failed to open camera:', err);
-      alert('Gagal mengakses kamera. Pastikan izin kamera telah diberikan.');
-      setShowCameraModal(false);
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: cameraFacingMode }
+        });
+        setCameraStream(fallbackStream);
+      } catch (fallbackErr) {
+        console.error('Camera fallback failed:', fallbackErr);
+        alert('Gagal mengakses kamera. Pastikan izin kamera telah diberikan.');
+        setShowCameraModal(false);
+      }
     }
   };
 
@@ -889,23 +978,19 @@ export default function ChatRoom({
     }
     setCameraStream(null);
     setCapturedPhoto(null);
+    setRecordedVideoBlob(null);
+    if (recordedVideoUrl) {
+      URL.revokeObjectURL(recordedVideoUrl);
+      setRecordedVideoUrl(null);
+    }
+    setVideoRecording(false);
     setShowCameraModal(false);
   };
 
   const toggleCameraFacingMode = async () => {
     const nextMode = cameraFacingMode === 'user' ? 'environment' : 'user';
     setCameraFacingMode(nextMode);
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: nextMode }
-      });
-      setCameraStream(stream);
-    } catch (err) {
-      console.error('Failed to switch camera direction:', err);
-    }
+    await restartCameraStream(nextMode, cameraQuality, cameraMode);
   };
 
   const capturePhotoSnapshot = () => {
@@ -917,7 +1002,9 @@ export default function ChatRoom({
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg');
+        const mimeType = 'image/jpeg';
+        const quality = cameraQuality === 'hd' ? 0.9 : 0.4;
+        const dataUrl = canvas.toDataURL(mimeType, quality);
         setCapturedPhoto(dataUrl);
       }
     }
@@ -934,6 +1021,65 @@ export default function ChatRoom({
     } catch (err) {
       console.error('Failed to convert snapshot or upload:', err);
       alert('Gagal mengirim foto hasil tangkapan kamera.');
+    }
+  };
+
+  const startVideoRecording = () => {
+    if (!cameraStream) return;
+    videoChunksRef.current = [];
+
+    try {
+      const options = { mimeType: 'video/webm;codecs=vp9' };
+      let mediaRecorder: MediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(cameraStream, options);
+      } catch (e) {
+        try {
+          mediaRecorder = new MediaRecorder(cameraStream, { mimeType: 'video/webm;codecs=vp8' });
+        } catch (e2) {
+          mediaRecorder = new MediaRecorder(cameraStream);
+        }
+      }
+
+      cameraRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          videoChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const videoBlob = new Blob(videoChunksRef.current, { type: 'video/webm' });
+        const videoUrl = URL.createObjectURL(videoBlob);
+        setRecordedVideoBlob(videoBlob);
+        setRecordedVideoUrl(videoUrl);
+      };
+
+      mediaRecorder.start();
+      setVideoRecording(true);
+    } catch (err) {
+      console.error('Failed to start video recording:', err);
+      alert('Gagal memulai perekaman video.');
+    }
+  };
+
+  const stopVideoRecording = () => {
+    if (cameraRecorderRef.current && cameraRecorderRef.current.state !== 'inactive') {
+      cameraRecorderRef.current.stop();
+    }
+    setVideoRecording(false);
+  };
+
+  const sendCapturedVideo = async () => {
+    if (!recordedVideoBlob) return;
+    try {
+      const file = new File([recordedVideoBlob], `video_${Date.now()}.webm`, { type: 'video/webm' });
+      await uploadFileStream(file, 'video');
+      closeCamera();
+    } catch (err) {
+      console.error('Failed to send video:', err);
+      alert('Gagal mengirim rekaman video.');
     }
   };
 
@@ -2174,10 +2320,35 @@ export default function ChatRoom({
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <span className="text-xs font-extrabold text-amber-400 uppercase tracking-widest font-mono flex items-center space-x-1.5">
-                <Camera className="w-3.5 h-3.5" />
-                <span>BeeChat Kamera</span>
-              </span>
+              
+              {/* Quality Selector (HD vs Low) */}
+              <div className="flex bg-neutral-950/80 border border-neutral-800 rounded-full p-1 shadow-lg backdrop-blur-md">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCameraQuality('low');
+                    restartCameraStream(cameraFacingMode, 'low', cameraMode);
+                  }}
+                  className={`px-3 py-1 rounded-full text-[10px] uppercase font-mono tracking-wider font-extrabold transition-all cursor-pointer ${
+                    cameraQuality === 'low' ? 'bg-neutral-800 text-amber-400 font-bold' : 'text-neutral-500 hover:text-white'
+                  }`}
+                >
+                  LOW (Hemat)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCameraQuality('hd');
+                    restartCameraStream(cameraFacingMode, 'hd', cameraMode);
+                  }}
+                  className={`px-3 py-1 rounded-full text-[10px] uppercase font-mono tracking-wider font-extrabold transition-all cursor-pointer ${
+                    cameraQuality === 'hd' ? 'bg-amber-400 text-neutral-950 shadow font-bold' : 'text-neutral-500 hover:text-white'
+                  }`}
+                >
+                  HD (Jernih)
+                </button>
+              </div>
+
               <button
                 onClick={toggleCameraFacingMode}
                 className="p-2 bg-neutral-900/60 backdrop-blur-md hover:bg-neutral-800 rounded-full text-white transition-all cursor-pointer"
@@ -2192,7 +2363,7 @@ export default function ChatRoom({
               </button>
             </motion.div>
 
-            {/* Live Camera Preview / Captured Photo */}
+            {/* Live Camera Preview / Captured Photo / Captured Video */}
             <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
               {capturedPhoto ? (
                 <motion.img
@@ -2202,6 +2373,14 @@ export default function ChatRoom({
                   alt="Hasil Tangkapan"
                   className="w-full h-full object-contain"
                 />
+              ) : recordedVideoUrl ? (
+                <video
+                  src={recordedVideoUrl}
+                  controls
+                  autoPlay
+                  loop
+                  className="w-full h-full object-contain"
+                />
               ) : (
                 <video
                   ref={videoRef}
@@ -2209,14 +2388,14 @@ export default function ChatRoom({
                   playsInline
                   muted
                   className={`w-full h-full object-cover ${
-                    cameraFacingMode === 'user' ? '-scale-x-100' : ''
+                    cameraFacingMode === 'user' && !videoRecording ? '-scale-x-100' : ''
                   }`}
                 />
               )}
               <canvas ref={canvasRef} className="hidden" />
 
               {/* Corner Frame Decorations */}
-              {!capturedPhoto && (
+              {!capturedPhoto && !recordedVideoBlob && (
                 <>
                   <div className="absolute top-16 left-6 w-10 h-10 border-t-2 border-l-2 border-amber-400/50 rounded-tl-xl" />
                   <div className="absolute top-16 right-6 w-10 h-10 border-t-2 border-r-2 border-amber-400/50 rounded-tr-xl" />
@@ -2230,13 +2409,28 @@ export default function ChatRoom({
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-t from-black via-black/95 to-transparent p-6 pb-8 flex items-center justify-center"
+              className="bg-gradient-to-t from-black via-black/95 to-transparent p-6 pb-8 flex flex-col items-center justify-center space-y-4"
             >
-              {capturedPhoto ? (
+              {/* Show recording timer */}
+              {videoRecording && (
+                <div className="flex items-center space-x-2 bg-red-600/20 border border-red-500/40 px-3 py-1 rounded-full animate-pulse">
+                  <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                  <span className="text-xs font-mono font-bold text-red-500">Merekam: {formatSeconds(videoRecordingSeconds)}</span>
+                </div>
+              )}
+
+              {capturedPhoto || recordedVideoBlob ? (
                 /* After capture: Retry / Send */
                 <div className="flex items-center space-x-6">
                   <button
-                    onClick={() => setCapturedPhoto(null)}
+                    onClick={() => {
+                      setCapturedPhoto(null);
+                      setRecordedVideoBlob(null);
+                      if (recordedVideoUrl) {
+                        URL.revokeObjectURL(recordedVideoUrl);
+                        setRecordedVideoUrl(null);
+                      }
+                    }}
                     className="flex flex-col items-center space-y-1.5 group cursor-pointer"
                   >
                     <div className="w-14 h-14 rounded-full border-2 border-neutral-600 group-hover:border-red-400 flex items-center justify-center transition-all group-hover:bg-red-950/30">
@@ -2249,25 +2443,73 @@ export default function ChatRoom({
                   </button>
 
                   <button
-                    onClick={sendCapturedPhoto}
+                    onClick={capturedPhoto ? sendCapturedPhoto : sendCapturedVideo}
                     className="flex flex-col items-center space-y-1.5 group cursor-pointer"
                   >
                     <div className="w-16 h-16 rounded-full bg-amber-400 group-hover:bg-amber-500 flex items-center justify-center transition-all shadow-lg shadow-amber-400/30 group-hover:shadow-amber-500/40 group-hover:scale-105">
                       <Send className="w-7 h-7 text-neutral-950" />
                     </div>
-                    <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider">Kirim</span>
+                    <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider">Kirim ({cameraQuality === 'hd' ? 'HD' : 'Hemat'})</span>
                   </button>
                 </div>
               ) : (
-                /* Live preview: Capture button */
-                <div className="flex flex-col items-center space-y-2.5">
-                  <button
-                    onClick={capturePhotoSnapshot}
-                    className="w-[72px] h-[72px] rounded-full border-[4px] border-white/80 flex items-center justify-center cursor-pointer group hover:border-amber-400 transition-all"
-                  >
-                    <div className="w-[58px] h-[58px] rounded-full bg-white/90 group-hover:bg-amber-400 transition-all group-active:scale-90" />
-                  </button>
-                  <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Ketuk untuk memotret</span>
+                /* Live preview: Controls */
+                <div className="flex flex-col items-center space-y-4 w-full max-w-xs">
+                  {/* Mode Selector (Photo / Video) */}
+                  <div className="flex bg-neutral-900 border border-neutral-800 rounded-2xl p-1 w-full justify-around">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCameraMode('photo');
+                        restartCameraStream(cameraFacingMode, cameraQuality, 'photo');
+                      }}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                        cameraMode === 'photo' ? 'bg-neutral-850 text-white border border-neutral-800 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>FOTO</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCameraMode('video');
+                        restartCameraStream(cameraFacingMode, cameraQuality, 'video');
+                      }}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                        cameraMode === 'video' ? 'bg-neutral-850 text-white border border-neutral-800 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      <Video className="w-3.5 h-3.5" />
+                      <span>VIDEO</span>
+                    </button>
+                  </div>
+
+                  {/* Shutter Button */}
+                  <div className="flex flex-col items-center space-y-2">
+                    {cameraMode === 'photo' ? (
+                      <button
+                        onClick={capturePhotoSnapshot}
+                        className="w-[72px] h-[72px] rounded-full border-[4px] border-white/80 flex items-center justify-center cursor-pointer group hover:border-amber-400 transition-all"
+                      >
+                        <div className="w-[58px] h-[58px] rounded-full bg-white/90 group-hover:bg-amber-400 transition-all group-active:scale-90" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={videoRecording ? stopVideoRecording : startVideoRecording}
+                        className="w-[72px] h-[72px] rounded-full border-[4px] border-white/80 flex items-center justify-center cursor-pointer group hover:border-red-500 transition-all"
+                      >
+                        {videoRecording ? (
+                          <div className="w-[36px] h-[36px] rounded bg-red-600 transition-all animate-pulse" />
+                        ) : (
+                          <div className="w-[58px] h-[58px] rounded-full bg-red-600/90 group-hover:bg-red-600 transition-all group-active:scale-90" />
+                        )}
+                      </button>
+                    )}
+                    <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">
+                      {cameraMode === 'photo' ? 'Ketuk untuk memotret' : (videoRecording ? 'Ketuk untuk berhenti' : 'Ketuk untuk merekam')}
+                    </span>
+                  </div>
                 </div>
               )}
             </motion.div>
