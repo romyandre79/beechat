@@ -274,7 +274,24 @@ export default function ChatRoom({
     }
 
     const audio = new Audio(audioUrl);
+    audio.crossOrigin = "anonymous";
     audioInstanceRef.current = audio;
+
+    // Volume Booster (Gain Node)
+    let audioCtx: AudioContext | null = null;
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        audioCtx = new AudioContext();
+        const source = audioCtx.createMediaElementSource(audio);
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.setValueAtTime(2.5, audioCtx.currentTime); // Boost volume by 250%
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+      }
+    } catch (e) {
+      console.warn('Audio Context Volume Booster failed, playing normally:', e);
+    }
 
     const onTimeUpdate = () => {
       setVoicePlaybackTime(audio.currentTime);
@@ -311,6 +328,9 @@ export default function ChatRoom({
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       audio.pause();
+      if (audioCtx && audioCtx.state !== 'closed') {
+        audioCtx.close().catch(() => {});
+      }
     };
   }, [playingVoiceId, messages]);
   
