@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'reac
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Phone, Video, Search, ArrowLeft, Send, Smile, Paperclip, Mic, Image as ImageIcon, Sparkles, Languages,
-  BookOpen, Star, Pin, Trash2, Edit2, Reply, Copy, Check, CheckCheck, MoreVertical, Play, Pause, Vote, Plus, Lock, FileText
+  BookOpen, Star, Pin, Trash2, Edit2, Reply, Copy, Check, CheckCheck, MoreVertical, Play, Pause, Vote, Plus, Lock, FileText, Camera
 } from 'lucide-react';
 import { Chat, Message, UserProfile, PollOption, Sticker } from '../types';
 import { speakText, formatMessageTime, simulateTranslate, simulateSummarize, simulateSuggestReplies } from '../utils';
@@ -19,7 +19,8 @@ interface ChatRoomProps {
     fileName?: string,
     fileSize?: string,
     replyToId?: string,
-    replyToText?: string
+    replyToText?: string,
+    duration?: number
   ) => void;
   onBack: () => void;
   onStartCall: (type: 'voice' | 'video') => void;
@@ -168,10 +169,24 @@ export default function ChatRoom({
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptionsInput, setPollOptionsInput] = useState(['', '']);
 
-  // Voice Note Simulation State
+  // Voice Note State
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [voicePlaybackTime, setVoicePlaybackTime] = useState(0);
+  const [voicePlaybackDuration, setVoicePlaybackDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const audioInstanceRef = useRef<HTMLAudioElement | null>(null);
+
+  // Camera State
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   
   // Media upload progress states
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
@@ -193,6 +208,58 @@ export default function ChatRoom({
     };
     loadStickers();
   }, [currentUser.id]);
+
+  // Actual Voice Note Playback Effect
+  useEffect(() => {
+    if (audioInstanceRef.current) {
+      audioInstanceRef.current.pause();
+      audioInstanceRef.current = null;
+    }
+
+    if (!playingVoiceId) {
+      setVoicePlaybackTime(0);
+      setVoicePlaybackDuration(0);
+      return;
+    }
+
+    const voiceMsg = messages.find(m => m.id === playingVoiceId);
+    if (!voiceMsg || !voiceMsg.text) {
+      setPlayingVoiceId(null);
+      return;
+    }
+
+    const audio = new Audio(voiceMsg.text);
+    audioInstanceRef.current = audio;
+
+    const onTimeUpdate = () => {
+      setVoicePlaybackTime(audio.currentTime);
+    };
+
+    const onLoadedMetadata = () => {
+      setVoicePlaybackDuration(audio.duration || voiceMsg.duration || 0);
+    };
+
+    const onEnded = () => {
+      setPlayingVoiceId(null);
+      setVoicePlaybackTime(0);
+    };
+
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('ended', onEnded);
+
+    audio.play().catch(err => {
+      console.error('Audio playback failed:', err);
+      setPlayingVoiceId(null);
+    });
+
+    return () => {
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('ended', onEnded);
+      audio.pause();
+    };
+  }, [playingVoiceId, messages]);
   
   // Scroller ref
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -630,7 +697,7 @@ export default function ChatRoom({
     }
   };
 
-  // Simulating Voice Recording
+  // Actual Voice Recording with MediaRecorder API
   useEffect(() => {
     let recTimer: any;
     if (recording) {
@@ -642,15 +709,166 @@ export default function ChatRoom({
     return () => clearInterval(recTimer);
   }, [recording]);
 
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
     if (recording) {
-      // Save voice note
-      onSendMessage(`Simulasi rekaman suara (${recordingSeconds} detik)`, 'voice');
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
       setRecording(false);
     } else {
-      setRecording(true);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        voiceStreamRef.current = stream;
+        audioChunksRef.current = [];
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        
+        const startTime = Date.now();
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          const elapsedSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const file = new File([audioBlob], `voicenote_${Date.now()}.webm`, { type: 'audio/webm' });
+          
+          setIsUploadingMedia(true);
+          setMediaProgress(0);
+
+          try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', API_BASE + '/api/upload');
+            xhr.setRequestHeader('x-file-name', file.name);
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+            xhr.upload.onprogress = (event) => {
+              if (event.lengthComputable) {
+                const percent = Math.round((event.loaded / event.total) * 100);
+                setMediaProgress(percent);
+              }
+            };
+
+            const result = await new Promise<{ url: string, fileName: string }>((resolve, reject) => {
+              xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  try {
+                    resolve(JSON.parse(xhr.responseText));
+                  } catch (e) {
+                    reject(new Error('Format respons server salah'));
+                  }
+                } else {
+                  reject(new Error(`Gagal dengan kode status ${xhr.status}`));
+                }
+              };
+              xhr.onerror = () => reject(new Error('Koneksi internet terputus'));
+              xhr.send(file);
+            });
+
+            const sizeStr = file.size > 1024 * 1024
+              ? (file.size / (1024 * 1024)).toFixed(1) + ' MB'
+              : (file.size / 1024).toFixed(1) + ' KB';
+
+            const absoluteUrl = result.url.startsWith('http') ? result.url : (API_BASE + result.url);
+            
+            onSendMessage(absoluteUrl, 'voice', undefined, undefined, result.fileName, sizeStr, undefined, undefined, elapsedSeconds);
+          } catch (err: any) {
+            alert(`Bzzzt! Gagal mengunggah rekaman suara: ${err.message || err}`);
+          } finally {
+            setIsUploadingMedia(false);
+            setMediaProgress(null);
+          }
+
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+        setRecording(true);
+      } catch (err) {
+        console.error('Failed to start recording:', err);
+        alert('Gagal mengakses mikrofon. Pastikan izin mikrofon telah diberikan. 🎤');
+      }
     }
   };
+
+  // Camera Helper Functions
+  const openCamera = async () => {
+    setShowCameraModal(true);
+    setCapturedPhoto(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: cameraFacingMode }
+      });
+      setCameraStream(stream);
+    } catch (err) {
+      console.error('Failed to open camera:', err);
+      alert('Gagal mengakses kamera. Pastikan izin kamera telah diberikan.');
+      setShowCameraModal(false);
+    }
+  };
+
+  const closeCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+    setCameraStream(null);
+    setCapturedPhoto(null);
+    setShowCameraModal(false);
+  };
+
+  const toggleCameraFacingMode = async () => {
+    const nextMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+    setCameraFacingMode(nextMode);
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: nextMode }
+      });
+      setCameraStream(stream);
+    } catch (err) {
+      console.error('Failed to switch camera direction:', err);
+    }
+  };
+
+  const capturePhotoSnapshot = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setCapturedPhoto(dataUrl);
+      }
+    }
+  };
+
+  const sendCapturedPhoto = async () => {
+    if (!capturedPhoto) return;
+    try {
+      const resBlob = await fetch(capturedPhoto);
+      const blob = await resBlob.blob();
+      const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      await uploadFileStream(file, 'image');
+      closeCamera();
+    } catch (err) {
+      console.error('Failed to convert snapshot or upload:', err);
+      alert('Gagal mengirim foto hasil tangkapan kamera.');
+    }
+  };
+
+  useEffect(() => {
+    if (showCameraModal && cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [showCameraModal, cameraStream]);
 
   const formatSeconds = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -934,24 +1152,33 @@ export default function ChatRoom({
                     </div>
                   ) : msg.type === 'voice' ? (
                     /* VOICE NOTE CONTROLS */
-                    <div className="flex items-center space-x-3.5 min-w-[200px]">
+                    <div className="flex items-center space-x-3.5 min-w-[220px]">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setPlayingVoiceId(playingVoiceId === msg.id ? null : msg.id);
                         }}
-                        className="p-2 bg-amber-400 text-neutral-950 rounded-full"
+                        className="p-2 bg-amber-400 text-neutral-950 rounded-full hover:scale-105 transition-transform"
                       >
                         {playingVoiceId === msg.id ? <Pause className="w-4 h-4 stroke-[3]" /> : <Play className="w-4 h-4 stroke-[3] ml-0.5" />}
                       </button>
                       <div className="flex-1">
                         <div className="h-1.5 bg-neutral-700 rounded-full overflow-hidden w-full relative">
                           <div
-                            className={`h-full bg-amber-400 ${playingVoiceId === msg.id ? 'animate-pulse w-full' : 'w-1/3'}`}
-                            style={{ transition: 'width 5s linear' }}
+                            className="h-full bg-amber-400 transition-all duration-100"
+                            style={{
+                              width: `${playingVoiceId === msg.id && voicePlaybackDuration > 0 ? (voicePlaybackTime / voicePlaybackDuration) * 100 : 0}%`
+                            }}
                           />
                         </div>
-                        <p className="text-[9px] text-neutral-400 font-mono mt-1">Simulasi Pesan Suara</p>
+                        <p className="text-[9px] text-neutral-400 font-mono mt-1 flex justify-between">
+                          <span>Pesan Suara 🎤</span>
+                          <span>
+                            {playingVoiceId === msg.id 
+                              ? `${formatSeconds(Math.round(voicePlaybackTime))} / ${formatSeconds(Math.round(voicePlaybackDuration))}` 
+                              : (msg.duration ? formatSeconds(msg.duration) : '0:00')}
+                          </span>
+                        </p>
                       </div>
                     </div>
                   ) : msg.type === 'video' ? (
@@ -1287,6 +1514,17 @@ export default function ChatRoom({
                   >
                     <Smile className="w-4 h-4 text-amber-400" />
                     <span>Kirim Stiker</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      openCamera();
+                      setShowAttachmentMenu(false);
+                    }}
+                    className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 rounded-xl text-left w-full cursor-pointer"
+                  >
+                    <Camera className="w-4 h-4 text-amber-400" />
+                    <span>Kamera</span>
                   </button>
                 </motion.div>
               )}
@@ -1846,6 +2084,123 @@ export default function ChatRoom({
           </motion.div>
         </div>
       )}
+
+      {/* 11. MODAL: CAMERA CAPTURE */}
+      <AnimatePresence>
+        {showCameraModal && (
+          <div className="fixed inset-0 z-[70] bg-neutral-950 flex flex-col">
+            {/* Camera Header Bar */}
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10"
+            >
+              <button
+                onClick={closeCamera}
+                className="p-2 bg-neutral-900/60 backdrop-blur-md hover:bg-neutral-800 rounded-full text-white transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <span className="text-xs font-extrabold text-amber-400 uppercase tracking-widest font-mono flex items-center space-x-1.5">
+                <Camera className="w-3.5 h-3.5" />
+                <span>BeeChat Kamera</span>
+              </span>
+              <button
+                onClick={toggleCameraFacingMode}
+                className="p-2 bg-neutral-900/60 backdrop-blur-md hover:bg-neutral-800 rounded-full text-white transition-all cursor-pointer"
+                title="Ganti Kamera"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
+                  <path d="M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5" />
+                  <path d="m14 9-3 3 3 3" />
+                  <path d="m10 15 3-3-3-3" />
+                </svg>
+              </button>
+            </motion.div>
+
+            {/* Live Camera Preview / Captured Photo */}
+            <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
+              {capturedPhoto ? (
+                <motion.img
+                  initial={{ scale: 1.05, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  src={capturedPhoto}
+                  alt="Hasil Tangkapan"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${
+                    cameraFacingMode === 'user' ? '-scale-x-100' : ''
+                  }`}
+                />
+              )}
+              <canvas ref={canvasRef} className="hidden" />
+
+              {/* Corner Frame Decorations */}
+              {!capturedPhoto && (
+                <>
+                  <div className="absolute top-16 left-6 w-10 h-10 border-t-2 border-l-2 border-amber-400/50 rounded-tl-xl" />
+                  <div className="absolute top-16 right-6 w-10 h-10 border-t-2 border-r-2 border-amber-400/50 rounded-tr-xl" />
+                  <div className="absolute bottom-32 left-6 w-10 h-10 border-b-2 border-l-2 border-amber-400/50 rounded-bl-xl" />
+                  <div className="absolute bottom-32 right-6 w-10 h-10 border-b-2 border-r-2 border-amber-400/50 rounded-br-xl" />
+                </>
+              )}
+            </div>
+
+            {/* Camera Action Bar */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-gradient-to-t from-black via-black/95 to-transparent p-6 pb-8 flex items-center justify-center"
+            >
+              {capturedPhoto ? (
+                /* After capture: Retry / Send */
+                <div className="flex items-center space-x-6">
+                  <button
+                    onClick={() => setCapturedPhoto(null)}
+                    className="flex flex-col items-center space-y-1.5 group cursor-pointer"
+                  >
+                    <div className="w-14 h-14 rounded-full border-2 border-neutral-600 group-hover:border-red-400 flex items-center justify-center transition-all group-hover:bg-red-950/30">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-neutral-400 group-hover:text-red-400 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                        <path d="M3 3v5h5" />
+                      </svg>
+                    </div>
+                    <span className="text-[10px] font-bold text-neutral-400 group-hover:text-red-400 uppercase tracking-wider transition-colors">Ulangi</span>
+                  </button>
+
+                  <button
+                    onClick={sendCapturedPhoto}
+                    className="flex flex-col items-center space-y-1.5 group cursor-pointer"
+                  >
+                    <div className="w-16 h-16 rounded-full bg-amber-400 group-hover:bg-amber-500 flex items-center justify-center transition-all shadow-lg shadow-amber-400/30 group-hover:shadow-amber-500/40 group-hover:scale-105">
+                      <Send className="w-7 h-7 text-neutral-950" />
+                    </div>
+                    <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider">Kirim</span>
+                  </button>
+                </div>
+              ) : (
+                /* Live preview: Capture button */
+                <div className="flex flex-col items-center space-y-2.5">
+                  <button
+                    onClick={capturePhotoSnapshot}
+                    className="w-[72px] h-[72px] rounded-full border-[4px] border-white/80 flex items-center justify-center cursor-pointer group hover:border-amber-400 transition-all"
+                  >
+                    <div className="w-[58px] h-[58px] rounded-full bg-white/90 group-hover:bg-amber-400 transition-all group-active:scale-90" />
+                  </button>
+                  <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest">Ketuk untuk memotret</span>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

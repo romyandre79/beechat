@@ -404,7 +404,8 @@ export default function App() {
     fileName?: string,
     fileSize?: string,
     replyToId?: string,
-    replyToText?: string
+    replyToText?: string,
+    duration?: number
   ) => {
     if (!activeChatId || !currentUser) return;
 
@@ -425,7 +426,8 @@ export default function App() {
       fileName: fileName,
       fileSize: fileSize,
       replyToId: replyToId,
-      replyToText: replyToText
+      replyToText: replyToText,
+      duration: duration
     };
 
     // 1. Add our message locally
