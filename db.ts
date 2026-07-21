@@ -27,7 +27,6 @@ export const pool = new Pool({
 // MariaDB/MySQL Connection Pool (Conditional)
 export let mysqlPool: mysql.Pool | null = null;
 if (process.env.DB_DRIVER === 'MySQL') {
-  console.log('Initializing MySQL/MariaDB Connection Pool...');
   mysqlPool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -88,7 +87,6 @@ export const localDb = {
 };
 
 export function seedLocalDbMockup() {
-  console.log('Seeding local in-memory fallback database with initial BeeChat mockup data...');
   localDb.users = [
     {
       id: 'user_queen',
@@ -323,34 +321,38 @@ export async function mockQuery(text: string, params: any[] = []): Promise<{ row
       const userId = params[0];
       const blockedIds = localDb.blocked_users.filter(bu => bu.user_id === userId).map(bu => bu.blocked_user_id);
       const matchedUsers = localDb.users.filter(u => blockedIds.includes(u.id));
-      return { rows: matchedUsers.map(u => ({
-        id: u.id,
-        name: u.name,
-        username: u.username,
-        avatar: u.avatar,
-        bio: u.bio
-      })) };
+      return {
+        rows: matchedUsers.map(u => ({
+          id: u.id,
+          name: u.name,
+          username: u.username,
+          avatar: u.avatar,
+          bio: u.bio
+        }))
+      };
     }
     if (qLower.includes('join chat_members')) {
       const chatId = params[0];
       const memberIds = localDb.chat_members.filter(cm => cm.chat_id === chatId).map(cm => cm.user_id);
       const matchedUsers = localDb.users.filter(u => memberIds.includes(u.id));
-      return { rows: matchedUsers.map(u => ({
-        id: u.id,
-        name: u.name,
-        username: u.username,
-        avatar: u.avatar,
-        bio: u.bio,
-        isOnline: u.is_online,
-        lastSeen: u.last_seen
-      })) };
+      return {
+        rows: matchedUsers.map(u => ({
+          id: u.id,
+          name: u.name,
+          username: u.username,
+          avatar: u.avatar,
+          bio: u.bio,
+          isOnline: u.is_online,
+          lastSeen: u.last_seen
+        }))
+      };
     }
     if (qLower.includes('id = $1 or username = $1 or email = $1 or phone = $1')) {
       const val = String(params[0]).toLowerCase();
-      const user = localDb.users.find(u => 
-        u.id.toLowerCase() === val || 
-        u.username.toLowerCase() === val || 
-        (u.email && u.email.toLowerCase() === val) || 
+      const user = localDb.users.find(u =>
+        u.id.toLowerCase() === val ||
+        u.username.toLowerCase() === val ||
+        (u.email && u.email.toLowerCase() === val) ||
         (u.phone && u.phone.toLowerCase() === val)
       );
       return { rows: user ? [user] : [] };
@@ -359,25 +361,27 @@ export async function mockQuery(text: string, params: any[] = []): Promise<{ row
       const id = String(params[0]);
       const user = localDb.users.find(u => u.id === id);
       if (user) {
-        return { rows: [{
-          id: user.id,
-          name: user.name,
-          username: user.username,
-          avatar: user.avatar,
-          bio: user.bio,
-          email: user.email,
-          phone: user.phone,
-          isOnline: user.is_online,
-          lastSeen: user.last_seen,
-          coverPhoto: user.cover_photo,
-          password_hash: user.password_hash
-        }] };
+        return {
+          rows: [{
+            id: user.id,
+            name: user.name,
+            username: user.username,
+            avatar: user.avatar,
+            bio: user.bio,
+            email: user.email,
+            phone: user.phone,
+            isOnline: user.is_online,
+            lastSeen: user.last_seen,
+            coverPhoto: user.cover_photo,
+            password_hash: user.password_hash
+          }]
+        };
       }
       return { rows: [] };
     }
     if (qLower.includes('name ilike $1')) {
       const searchVal = String(params[0]).replace(/%/g, '').toLowerCase();
-      const matches = localDb.users.filter(u => 
+      const matches = localDb.users.filter(u =>
         u.name.toLowerCase().includes(searchVal) ||
         u.username.toLowerCase().includes(searchVal) ||
         (u.email && u.email.toLowerCase().includes(searchVal)) ||
@@ -414,18 +418,20 @@ export async function mockQuery(text: string, params: any[] = []): Promise<{ row
     if (qLower.includes('cm.user_id = $1')) {
       const uId = String(params[0]);
       const userChats = localDb.chats.filter(c => c.members.includes(uId));
-      return { rows: userChats.map(c => ({
-        id: c.id,
-        name: c.name,
-        avatar: c.avatar,
-        is_group: c.isGroup,
-        is_pinned: c.isPinned,
-        is_archived: c.isArchived,
-        type: c.type,
-        description: c.description,
-        last_message: c.lastMessage,
-        last_message_time: c.lastMessageTime
-      })) };
+      return {
+        rows: userChats.map(c => ({
+          id: c.id,
+          name: c.name,
+          avatar: c.avatar,
+          is_group: c.isGroup,
+          is_pinned: c.isPinned,
+          is_archived: c.isArchived,
+          type: c.type,
+          description: c.description,
+          last_message: c.lastMessage,
+          last_message_time: c.lastMessageTime
+        }))
+      };
     }
   }
   if (qLower.startsWith('insert into chats')) {
@@ -505,22 +511,24 @@ export async function mockQuery(text: string, params: any[] = []): Promise<{ row
       const uId = String(params[0]);
       const chatIds = localDb.chats.filter(c => c.members.includes(uId)).map(c => c.id);
       const userMsgs = localDb.messages.filter(m => chatIds.includes(m.chatId));
-      return { rows: userMsgs.map(m => ({
-        id: m.id,
-        chat_id: m.chatId,
-        sender_id: m.senderId,
-        text: m.text,
-        type: m.type,
-        timestamp: m.timestamp,
-        status: m.status,
-        media_url: m.mediaUrl,
-        file_name: m.fileName,
-        file_size: m.fileSize,
-        duration: m.duration,
-        poll_question: m.pollQuestion,
-        reply_to_id: m.replyToId,
-        reply_to_text: m.replyToText
-      })) };
+      return {
+        rows: userMsgs.map(m => ({
+          id: m.id,
+          chat_id: m.chatId,
+          sender_id: m.senderId,
+          text: m.text,
+          type: m.type,
+          timestamp: m.timestamp,
+          status: m.status,
+          media_url: m.mediaUrl,
+          file_name: m.fileName,
+          file_size: m.fileSize,
+          duration: m.duration,
+          poll_question: m.pollQuestion,
+          reply_to_id: m.replyToId,
+          reply_to_text: m.replyToText
+        }))
+      };
     }
   }
   if (qLower.startsWith('insert into messages')) {
@@ -724,10 +732,10 @@ export async function mockQuery(text: string, params: any[] = []): Promise<{ row
 
 export async function runMySQLQuery(sql: string, params: any[] = []): Promise<{ rows: any[] }> {
   if (!mysqlPool) throw new Error('MySQL pool not initialized');
-  
+
   let mysqlSql = sql.trim().replace(/\s+/g, ' ');
   const qLower = mysqlSql.toLowerCase();
-  
+
   if (qLower.startsWith('set search_path') || qLower.startsWith('create schema')) {
     return { rows: [] };
   }
@@ -735,7 +743,7 @@ export async function runMySQLQuery(sql: string, params: any[] = []): Promise<{ 
   const placeholderRegex = /\$([0-9]+)/g;
   let match;
   const sequentialParams: any[] = [];
-  
+
   while ((match = placeholderRegex.exec(mysqlSql)) !== null) {
     const idx = parseInt(match[1]) - 1;
     sequentialParams.push(params[idx]);
@@ -750,19 +758,19 @@ export async function runMySQLQuery(sql: string, params: any[] = []): Promise<{ 
   if (qLower.includes('array_agg')) {
     const queryReactionsSql = `SELECT message_id, emoji, user_id FROM message_reactions WHERE message_id IN (?)`;
     const [rawRows]: any = await mysqlPool.query(queryReactionsSql, finalParams);
-    
+
     const grouped = rawRows.reduce((acc: any, row: any) => {
       const key = `${row.message_id}_${row.emoji}`;
       if (!acc[key]) acc[key] = [];
       acc[key].push(row.user_id);
       return acc;
     }, {} as Record<string, string[]>);
-    
+
     const rows = Object.entries(grouped).map(([key, userIds]) => {
       const [msgId, emoji] = key.split('_');
       return { message_id: msgId, emoji, user_ids: userIds };
     });
-    
+
     return { rows };
   }
 
@@ -828,13 +836,13 @@ export const dbConnect = async function () {
   if (isDatabaseOffline) {
     return {
       query: (text: string, params?: any[]) => mockQuery(text, params),
-      release: () => {}
+      release: () => { }
     };
   }
   if (process.env.DB_DRIVER === 'MySQL') {
     return {
       query: (text: string, params?: any[]) => runMySQLQuery(text, params),
-      release: () => {}
+      release: () => { }
     };
   }
   return pool.connect();
@@ -843,11 +851,11 @@ export const dbConnect = async function () {
 export async function initDb() {
   const client = await dbConnect();
   try {
-    console.log('Initializing database schemas...');
-    
-    await client.query('CREATE SCHEMA IF NOT EXISTS beechat AUTHORIZATION beechat').catch(() => {});
-    await client.query('SET search_path TO beechat, public').catch(() => {});
-    
+    //('Initializing database schemas...');
+
+    await client.query('CREATE SCHEMA IF NOT EXISTS beechat AUTHORIZATION beechat').catch(() => { });
+    await client.query('SET search_path TO beechat, public').catch(() => { });
+
     // 1. Users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -866,10 +874,10 @@ export async function initDb() {
       );
     `);
 
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(256);`).catch(() => {});
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`).catch(() => {});
-    await client.query(`ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);`).catch(() => {});
-    await client.query(`ALTER TABLE users ADD CONSTRAINT users_phone_unique UNIQUE (phone);`).catch(() => {});
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(256);`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD CONSTRAINT users_phone_unique UNIQUE (phone);`).catch(() => { });
 
     // 2. Chats table
     await client.query(`
@@ -916,8 +924,8 @@ export async function initDb() {
       );
     `);
 
-    await client.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_name TEXT').catch(() => {});
-    await client.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_size TEXT').catch(() => {});
+    await client.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_name TEXT').catch(() => { });
+    await client.query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_size TEXT').catch(() => { });
 
     // 5. Poll options table
     await client.query(`
@@ -1047,22 +1055,20 @@ export async function initDb() {
     }
 
     // Create indexes for performance on remote database
-    await client.query('CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_chat_members_chat_id ON chat_members(chat_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_poll_options_message_id ON poll_options(message_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_poll_votes_option_id ON poll_votes(option_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_message_reactions_message_id ON message_reactions(message_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_status_updates_user_id ON status_updates(user_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_status_views_status_id ON status_views(status_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_stickers_user_id ON stickers(user_id)').catch(() => {});
-    await client.query('CREATE INDEX IF NOT EXISTS idx_blocked_users_user_id ON blocked_users(user_id)').catch(() => {});
+    await client.query('CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_chat_members_user_id ON chat_members(user_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_chat_members_chat_id ON chat_members(chat_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_poll_options_message_id ON poll_options(message_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_poll_votes_option_id ON poll_votes(option_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_message_reactions_message_id ON message_reactions(message_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_status_updates_user_id ON status_updates(user_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_status_views_status_id ON status_views(status_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_stickers_user_id ON stickers(user_id)').catch(() => { });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_blocked_users_user_id ON blocked_users(user_id)').catch(() => { });
 
-    console.log('Database schemas successfully initialized.');
   } catch (err) {
-    console.error('Error initializing database schemas:', err);
   } finally {
     client.release();
   }
@@ -1070,8 +1076,7 @@ export async function initDb() {
 
 export async function ensureMySQLDatabaseExists() {
   if (process.env.DB_DRIVER !== 'MySQL') return;
-  console.log('Ensuring MySQL/MariaDB database exists...');
-  
+
   const tempConnection = await mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -1082,5 +1087,4 @@ export async function ensureMySQLDatabaseExists() {
   const dbName = process.env.DB_NAME || 'beechat';
   await tempConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
   await tempConnection.end();
-  console.log(`Database "${dbName}" is verified/created successfully.`);
 }

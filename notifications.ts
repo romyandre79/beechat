@@ -18,13 +18,12 @@ const mailTransporter = nodemailer.createTransport({
 export async function sendWhatsAppNotification(phone: string, name: string) {
   const token = process.env.FONNTE_TOKEN;
   if (!token) {
-    console.log('FONNTE_TOKEN is not configured in .env. Skipping WhatsApp notification.');
     return;
   }
-  
+
   // Clean/normalize phone number (Fonnte expects target with digits only)
   let cleanPhone = phone.replace(/[^0-9]/g, '');
-  
+
   const welcomeMessage = `Halo ${name}! 🐝 Selamat bergabung di BeeChat (Sarang Lebah Terbuka kami)! Akun Anda telah berhasil terdaftar. Ayo mulai terbang dan sebarkan nektar kebaikan dengan mengobrol bersama koloni lebah pekerja lainnya! 🍯✨`;
 
   try {
@@ -41,12 +40,9 @@ export async function sendWhatsAppNotification(phone: string, name: string) {
     });
     const resData = (await response.json()) as any;
     if (resData.status) {
-      console.log(`WhatsApp notification successfully queued to ${cleanPhone}`);
     } else {
-      console.error(`Fonnte API returned error:`, resData.reason || resData);
     }
   } catch (err) {
-    console.error('Failed to send WhatsApp notification:', err);
   }
 }
 
@@ -55,7 +51,6 @@ export async function sendEmailNotification(email: string, name: string) {
   const login = process.env.BREVO_LOGIN;
   const key = process.env.BREVO_KEY;
   if (!login || !key) {
-    console.log('Brevo credentials are not configured in .env. Skipping Email notification.');
     return;
   }
 
@@ -90,8 +85,6 @@ export async function sendEmailNotification(email: string, name: string) {
       subject: `Selamat Bergabung di BeeChat, ${name}! 🐝`,
       html: welcomeHtml,
     });
-    console.log(`Email notification successfully sent to ${email}`);
   } catch (err) {
-    console.error('Failed to send Email notification:', err);
   }
 }
