@@ -1083,6 +1083,7 @@ export default function App() {
                             m => m.chatId === chat.id && m.senderId !== currentUser?.id && m.status !== 'read'
                           ).length;
                           const cleanedChatName = cleanName(chat.name);
+                          console.log('BeeChat Debug - ID:', chat.id, 'Original:', JSON.stringify(chat.name), 'Cleaned:', JSON.stringify(cleanedChatName), 'unreadCount:', unreadCount);
 
                           return (
                             <div
