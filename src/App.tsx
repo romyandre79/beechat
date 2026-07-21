@@ -79,10 +79,19 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Database States (persisted via PostgreSQL, cached in localStorage)
   const [chats, setChats] = useState<Chat[]>(() => {
     const saved = localStorage.getItem('beechat_cached_chats');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed)
+          ? parsed.map((c: Chat) => ({ ...c, name: cleanName(c.name) }))
+          : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
   });
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = localStorage.getItem('beechat_cached_messages');
@@ -235,11 +244,12 @@ export default function App() {
           const rawChats = await chatsRes.json();
           const decryptedChats = await Promise.all(
             rawChats.map(async (c: Chat) => {
+              const cleanedName = cleanName(c.name);
               if (c.lastMessage && c.lastMessage.startsWith('e2ee:')) {
                 const decLastMsg = await decryptMessage(c.lastMessage, c.id);
-                return { ...c, lastMessage: decLastMsg };
+                return { ...c, name: cleanedName, lastMessage: decLastMsg };
               }
-              return c;
+              return { ...c, name: cleanedName };
             })
           );
           setChats(decryptedChats);
