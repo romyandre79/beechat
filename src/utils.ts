@@ -37,7 +37,7 @@ export function formatMessageTime(timestampStr: string): string {
 
 export function cleanName(name: string): string {
   if (!name) return '';
-  return name.replace(/0$/, '');
+  return name.trim().replace(/0\s*$/, '').trim();
 }
 
 export const INITIAL_USER: UserProfile = {
