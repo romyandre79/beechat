@@ -38,7 +38,6 @@ export async function generateAiContentWithFallback(prompt: string, responseMime
   let lastError: any = null;
   for (const modelName of GEMINI_MODELS) {
     try {
-      //console.log(`Attempting AI generation with model: ${modelName}...`);
       const options: any = {
         model: modelName,
         contents: prompt,
@@ -48,11 +47,9 @@ export async function generateAiContentWithFallback(prompt: string, responseMime
       }
       const response = await ai.models.generateContent(options);
       if (response && response.text) {
-        //console.log(`AI generation successful with model: ${modelName}`);
         return response.text;
       }
     } catch (err: any) {
-      //console.warn(`Model ${modelName} failed or unavailable:`, err.message || err);
       lastError = err;
     }
   }
