@@ -954,7 +954,7 @@ export default function App() {
                 { tab: 'community' as const, icon: Users, label: 'Groups' },
                 { tab: 'profile' as const, icon: User, label: 'Profil' },
                 { tab: 'settings' as const, icon: Settings, label: 'Setelan' },
-                { tab: 'admin' as const, icon: ShieldAlert, label: 'Admin' }
+                ...(currentUser?.id === 'raja_hutan' ? [{ tab: 'admin' as const, icon: ShieldAlert, label: 'Admin' }] : [])
               ].map((item) => (
                 <button
                   key={item.tab}
@@ -1007,7 +1007,7 @@ export default function App() {
                 { tab: 'community' as const, icon: Users },
                 { tab: 'profile' as const, icon: User },
                 { tab: 'settings' as const, icon: Settings },
-                { tab: 'admin' as const, icon: ShieldAlert }
+                ...(currentUser?.id === 'raja_hutan' ? [{ tab: 'admin' as const, icon: ShieldAlert }] : [])
               ].map((item) => (
                 <button
                   key={item.tab}
@@ -1184,9 +1184,10 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'admin' && (
+              {activeTab === 'admin' && currentUser && (
                 <DashboardView
                   onDispatchAnnouncement={handleDispatchAnnouncement}
+                  adminId={currentUser.id}
                 />
               )}
             </div>

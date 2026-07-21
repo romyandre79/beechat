@@ -295,6 +295,10 @@ app.post('/api/users/login', async (req, res) => {
     const defaultHash = 'f974cf978fbcd58b9f91a27e7d8c1c4e73cc359ee5cc73adfd132b4b455b85a3'; // 'beechat123'
     const storedHash = (user.password_hash && user.password_hash.trim() !== '') ? user.password_hash : defaultHash;
 
+    if (user.is_banned === true || user.is_banned === 1) {
+      return res.status(403).json({ error: 'Akun Anda telah ditangguhkan/diblokir oleh admin. 🐝' });
+    }
+
     if (storedHash !== passwordHash) {
       return res.status(401).json({ error: 'Kata sandi salah bzzzt! Coba kata sandi default: beechat123 🐝' });
     }
@@ -317,6 +321,48 @@ app.post('/api/users/login', async (req, res) => {
     });
   } catch (err: any) {
     console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET admin user list
+app.get('/api/admin/users', async (req, res) => {
+  const { adminId } = req.query;
+  if (adminId !== 'raja_hutan') {
+    return res.status(403).json({ error: 'Akses ditolak: Hanya admin yang dapat mengakses menu ini. 🐝' });
+  }
+  try {
+    const usersRes = await dbQuery("SELECT id, name, username, avatar, is_banned FROM users WHERE id <> 'system' AND id <> 'queen_ai'");
+    const users = usersRes.rows.map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      username: u.username,
+      avatar: u.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+      status: (u.is_banned === true || u.is_banned === 1) ? 'banned' : 'active',
+      reports: 0
+    }));
+    res.json(users);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST admin toggle ban user
+app.post('/api/admin/users/ban', async (req, res) => {
+  const { adminId, targetUserId } = req.body;
+  if (adminId !== 'raja_hutan') {
+    return res.status(403).json({ error: 'Akses ditolak: Hanya admin yang dapat mengakses menu ini. 🐝' });
+  }
+  try {
+    const userRes = await dbQuery('SELECT is_banned FROM users WHERE id = $1', [targetUserId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User tidak ditemukan' });
+    }
+    const currentlyBanned = userRes.rows[0].is_banned === true || userRes.rows[0].is_banned === 1;
+    const nextBanStatus = !currentlyBanned;
+    await dbQuery('UPDATE users SET is_banned = $1, is_online = false WHERE id = $2', [nextBanStatus, targetUserId]);
+    res.json({ success: true, isBanned: nextBanStatus });
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });

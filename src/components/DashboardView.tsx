@@ -23,15 +23,27 @@ interface ReportItem {
 
 interface DashboardViewProps {
   onDispatchAnnouncement: (text: string) => void;
+  adminId: string;
 }
 
-export default function DashboardView({ onDispatchAnnouncement }: DashboardViewProps) {
-  // Mock users for administration
-  const [users, setUsers] = useState<UserItem[]>([
-    { id: 'buzz', name: 'Worker Buzz 🐝', username: 'worker_buzz', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', reports: 0, status: 'active' },
-    { id: 'bob', name: 'Bumblebee Bob 🌼', username: 'lazy_bob', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', reports: 1, status: 'active' },
-    { id: 'bad_wasp', name: 'Hornet Wasp 🦟', username: 'bad_wasp_sting', avatar: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?w=150&auto=format&fit=crop&q=80', reports: 8, status: 'active' },
-  ]);
+export default function DashboardView({ onDispatchAnnouncement, adminId }: DashboardViewProps) {
+  const [users, setUsers] = useState<UserItem[]>([]);
+
+  // Fetch real users from DB on mount
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const res = await fetch(`/api/admin/users?adminId=${adminId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setUsers(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch admin users:', err);
+      }
+    };
+    fetchUsers();
+  }, [adminId]);
 
   // Mock report log
   const [reports, setReports] = useState<ReportItem[]>([
@@ -62,15 +74,30 @@ export default function DashboardView({ onDispatchAnnouncement }: DashboardViewP
     return () => clearInterval(timer);
   }, []);
 
-  const handleBanToggle = (userId: string) => {
-    setUsers(prev => prev.map(u => {
-      if (u.id === userId) {
-        const newStatus = u.status === 'active' ? 'banned' : 'active';
-        alert(`Status ${u.name} berhasil diubah menjadi: ${newStatus.toUpperCase()}`);
-        return { ...u, status: newStatus };
+  const handleBanToggle = async (userId: string) => {
+    try {
+      const res = await fetch('/api/admin/users/ban', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId, targetUserId: userId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(prev => prev.map(u => {
+          if (u.id === userId) {
+            const nextStatus = data.isBanned ? 'banned' : 'active';
+            alert(`Status ${u.name} berhasil diubah menjadi: ${nextStatus.toUpperCase()}`);
+            return { ...u, status: nextStatus };
+          }
+          return u;
+        }));
+      } else {
+        const err = await res.json();
+        alert(`Bzzzt! Gagal mengubah status ban: ${err.error || 'Server error'}`);
       }
-      return u;
-    }));
+    } catch (err) {
+      alert('Bzzzt! Gagal menghubungkan ke server.');
+    }
   };
 
   const handleResolveReport = (reportId: string) => {

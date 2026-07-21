@@ -870,12 +870,14 @@ export async function initDb() {
         last_seen TIMESTAMP,
         last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         cover_photo TEXT,
-        password_hash VARCHAR(256)
+        password_hash VARCHAR(256),
+        is_banned BOOLEAN DEFAULT false
       );
     `);
 
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(256);`).catch(() => { });
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`).catch(() => { });
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;`).catch(() => { });
     await client.query(`ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);`).catch(() => { });
     await client.query(`ALTER TABLE users ADD CONSTRAINT users_phone_unique UNIQUE (phone);`).catch(() => { });
 
