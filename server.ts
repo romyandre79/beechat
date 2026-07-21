@@ -61,6 +61,15 @@ const userSockets = new Map<string, string>();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Global CORS Middleware for API and Static uploads
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type,x-file-name');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  next();
+});
+
 // Serve uploaded static files
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
