@@ -27,9 +27,7 @@ interface DashboardViewProps {
 }
 
 export default function DashboardView({ onDispatchAnnouncement, adminId }: DashboardViewProps) {
-  const [users, setUsers] = useState<UserItem[]>([]);
-
-  // Fetch real users from DB on mount
+  // Fetch real users and reports from DB on mount
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -42,14 +40,24 @@ export default function DashboardView({ onDispatchAnnouncement, adminId }: Dashb
         console.error('Failed to fetch admin users:', err);
       }
     };
+
+    const fetchReports = async () => {
+      try {
+        const res = await fetch(`/api/admin/reports?adminId=${adminId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setReports(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch admin reports:', err);
+      }
+    };
+
     fetchUsers();
+    fetchReports();
   }, [adminId]);
 
-  // Mock report log
-  const [reports, setReports] = useState<ReportItem[]>([
-    { id: 'rep_1', reportedUser: 'Hornet Wasp 🦟', reporter: 'Worker Buzz 🐝', reason: 'Mencoba merusak dinding sarang madu utama', timestamp: '2026-07-16T14:20:00Z', status: 'pending' },
-    { id: 'rep_2', reportedUser: 'Bumblebee Bob 🌼', reporter: 'Beekeeper Dan 👨‍🌾', reason: 'Tidur terus saat jam kerja mengumpulkan nektar', timestamp: '2026-07-15T09:10:00Z', status: 'resolved' },
-  ]);
+  const [reports, setReports] = useState<ReportItem[]>([]);
 
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementSuccess, setAnnouncementSuccess] = useState(false);
@@ -100,13 +108,27 @@ export default function DashboardView({ onDispatchAnnouncement, adminId }: Dashb
     }
   };
 
-  const handleResolveReport = (reportId: string) => {
-    setReports(prev => prev.map(r => {
-      if (r.id === reportId) {
-        return { ...r, status: 'resolved' as const };
+  const handleResolveReport = async (reportId: string) => {
+    try {
+      const res = await fetch('/api/admin/reports/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId, reportId })
+      });
+      if (res.ok) {
+        setReports(prev => prev.map(r => {
+          if (r.id === reportId) {
+            return { ...r, status: 'resolved' as const };
+          }
+          return r;
+        }));
+      } else {
+        const err = await res.json();
+        alert(`Gagal menyelesaikan aduan: ${err.error || 'Server error'}`);
       }
-      return r;
-    }));
+    } catch (err) {
+      alert('Bzzzt! Gagal menghubungkan ke server.');
+    }
   };
 
   const handleSendAnnouncement = (e: FormEvent) => {
@@ -218,15 +240,15 @@ export default function DashboardView({ onDispatchAnnouncement, adminId }: Dashb
           )}
         </div>
 
-        {/* User management and reports divided into columns */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* User management and reports stacked */}
+        <div className="flex flex-col space-y-6">
           {/* User Moderation */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 font-mono flex items-center">
               <Users className="w-4 h-4 mr-2" /> Moderasi Anggota
             </h3>
 
-            <div className="space-y-3">
+            <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
               {users.map(u => (
                 <div key={u.id} className="flex items-center justify-between p-2.5 bg-neutral-950 rounded-2xl border border-neutral-800/40">
                   <div className="flex items-center space-x-3">
@@ -266,7 +288,7 @@ export default function DashboardView({ onDispatchAnnouncement, adminId }: Dashb
               <AlertOctagon className="w-4 h-4 mr-2" /> Aduan & Laporan Pelanggaran
             </h3>
 
-            <div className="space-y-3">
+            <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
               {reports.map(r => (
                 <div key={r.id} className="p-3 bg-neutral-950 rounded-2xl border border-neutral-800/40 space-y-2 text-xs relative">
                   <div className="flex justify-between items-center">

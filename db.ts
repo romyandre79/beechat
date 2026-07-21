@@ -1070,6 +1070,30 @@ export async function initDb() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_stickers_user_id ON stickers(user_id)').catch(() => { });
     await client.query('CREATE INDEX IF NOT EXISTS idx_blocked_users_user_id ON blocked_users(user_id)').catch(() => { });
 
+    // 9. Reports table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reports (
+        id VARCHAR(255) PRIMARY KEY,
+        reported_user_id VARCHAR(255) NOT NULL,
+        reporter_id VARCHAR(255) NOT NULL,
+        reason TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(50) DEFAULT 'pending'
+      );
+    `).catch(() => { });
+
+    // Seed default reports if empty
+    const reportsCheck = await client.query('SELECT COUNT(*) as count FROM reports').catch(() => ({ rows: [{ count: 0 }] }));
+    const count = parseInt(reportsCheck.rows[0]?.count || '0');
+    if (count === 0) {
+      await client.query(`
+        INSERT INTO reports (id, reported_user_id, reporter_id, reason, status)
+        VALUES 
+        ('rep_1', 'kucing', 'ary', 'Mencoba merusak dinding sarang madu utama', 'pending'),
+        ('rep_2', 'riyadhi', 'hadi', 'Tidur terus saat jam kerja mengumpulkan nektar', 'resolved')
+      `).catch(() => {});
+    }
+
   } catch (err) {
   } finally {
     client.release();

@@ -367,6 +367,49 @@ app.post('/api/admin/users/ban', async (req, res) => {
   }
 });
 
+// GET admin reports list
+app.get('/api/admin/reports', async (req, res) => {
+  const { adminId } = req.query;
+  if (adminId !== 'raja_hutan') {
+    return res.status(403).json({ error: 'Akses ditolak: Hanya admin yang dapat mengakses menu ini. 🐝' });
+  }
+  try {
+    const reportsRes = await dbQuery(`
+      SELECT r.id, r.reason, r.timestamp, r.status,
+             u1.name as reported_name, u2.name as reporter_name
+      FROM reports r
+      JOIN users u1 ON r.reported_user_id = u1.id
+      JOIN users u2 ON r.reporter_id = u2.id
+      ORDER BY r.timestamp DESC
+    `);
+    const reports = reportsRes.rows.map((row: any) => ({
+      id: row.id,
+      reportedUser: row.reported_name,
+      reporter: row.reporter_name,
+      reason: row.reason,
+      timestamp: row.timestamp,
+      status: row.status
+    }));
+    res.json(reports);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST admin resolve report
+app.post('/api/admin/reports/resolve', async (req, res) => {
+  const { adminId, reportId } = req.body;
+  if (adminId !== 'raja_hutan') {
+    return res.status(403).json({ error: 'Akses ditolak: Hanya admin yang dapat mengakses menu ini. 🐝' });
+  }
+  try {
+    await dbQuery("UPDATE reports SET status = 'resolved' WHERE id = $1", [reportId]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET user profile
 app.get('/api/users/profile', async (req, res) => {
   const { userId } = req.query;
