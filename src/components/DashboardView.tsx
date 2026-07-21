@@ -27,6 +27,9 @@ interface DashboardViewProps {
 }
 
 export default function DashboardView({ onDispatchAnnouncement, adminId }: DashboardViewProps) {
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [reports, setReports] = useState<ReportItem[]>([]);
+
   // Fetch real users and reports from DB on mount
   useEffect(() => {
     const fetchUsers = async () => {
@@ -56,8 +59,6 @@ export default function DashboardView({ onDispatchAnnouncement, adminId }: Dashb
     fetchUsers();
     fetchReports();
   }, [adminId]);
-
-  const [reports, setReports] = useState<ReportItem[]>([]);
 
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementSuccess, setAnnouncementSuccess] = useState(false);

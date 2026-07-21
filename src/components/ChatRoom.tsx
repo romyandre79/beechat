@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'reac
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Phone, Video, Search, ArrowLeft, Send, Smile, Paperclip, Mic, Image as ImageIcon, Sparkles, Languages,
-  BookOpen, Star, Pin, Trash2, Edit2, Reply, Copy, Check, CheckCheck, MoreVertical, Play, Pause, Vote, Plus, Lock, FileText, Camera
+  BookOpen, Star, Pin, Trash2, Edit2, Reply, Copy, Check, CheckCheck, MoreVertical, Play, Pause, Vote, Plus, Lock, FileText, Camera, AlertOctagon
 } from 'lucide-react';
 import { Chat, Message, UserProfile, PollOption, Sticker } from '../types';
 import { speakText, formatMessageTime, simulateTranslate, simulateSummarize, simulateSuggestReplies, cleanName } from '../utils';
@@ -198,6 +198,11 @@ export default function ChatRoom({
   
   // Media upload progress states
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+  // Report User State
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [mediaProgress, setMediaProgress] = useState<number | null>(null);
   const [pendingCompressFile, setPendingCompressFile] = useState<{ file: File, type: 'image' | 'sticker' | 'document' } | null>(null);
   const [stickersList, setStickersList] = useState<Sticker[]>([]);
@@ -887,6 +892,35 @@ export default function ChatRoom({
     return () => clearInterval(timer);
   }, [videoRecording]);
 
+  // Report Helper Function
+  const handleSendReport = async () => {
+    if (!reportReason.trim() || !partnerId) return;
+    setIsSubmittingReport(true);
+    try {
+      const res = await fetch(API_BASE + '/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reporterId: currentUser.id,
+          reportedUserId: partnerId,
+          reason: reportReason.trim()
+        })
+      });
+      if (res.ok) {
+        alert('Laporan Anda berhasil dikirim ke sarang admin BeeChat. Terima kasih atas kontribusi Anda menjaga kenyamanan sarang! 🐝💛');
+        setReportReason('');
+        setShowReportModal(false);
+      } else {
+        const err = await res.json();
+        alert(`Bzzzt! Gagal mengirim laporan: ${err.error || 'Server error'}`);
+      }
+    } catch (err) {
+      alert('Bzzzt! Gagal menghubungi server.');
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
   // Camera Helper Functions
   const restartCameraStream = async (newFacingMode?: 'user' | 'environment', newQuality?: 'low' | 'hd', newMode?: 'photo' | 'video') => {
     if (cameraStream) {
@@ -1224,29 +1258,42 @@ export default function ChatRoom({
                     <span>Hapus Chat</span>
                   </button>
                   {!chat.isGroup && chat.type !== 'ai' && partnerId && (
-                    isPartnerBlocked ? (
+                    <>
                       <button
                         onClick={() => {
-                          onUnblockUser(partnerId);
+                          setShowReportModal(true);
                           setShowHeaderMenu(false);
                         }}
-                        className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 text-emerald-400 rounded-xl text-left w-full cursor-pointer"
+                        className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 text-amber-500 rounded-xl text-left w-full cursor-pointer"
                       >
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>Buka Blokir</span>
+                        <AlertOctagon className="w-3.5 h-3.5" />
+                        <span>Laporkan User</span>
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          onBlockUser(partnerId);
-                          setShowHeaderMenu(false);
-                        }}
-                        className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 text-red-400 rounded-xl text-left w-full cursor-pointer"
-                      >
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>Blokir User</span>
-                      </button>
-                    )
+
+                      {isPartnerBlocked ? (
+                        <button
+                          onClick={() => {
+                            onUnblockUser(partnerId);
+                            setShowHeaderMenu(false);
+                          }}
+                          className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 text-emerald-400 rounded-xl text-left w-full cursor-pointer"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Buka Blokir</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            onBlockUser(partnerId);
+                            setShowHeaderMenu(false);
+                          }}
+                          className="flex items-center space-x-2.5 p-2 hover:bg-neutral-800 text-red-400 rounded-xl text-left w-full cursor-pointer"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Blokir User</span>
+                        </button>
+                      )}
+                    </>
                   )}
                 </motion.div>
               )}
@@ -2512,6 +2559,68 @@ export default function ChatRoom({
                   </div>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 12. MODAL: REPORT USER */}
+      <AnimatePresence>
+        {showReportModal && (
+          <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 w-full max-w-md shadow-2xl relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-24 h-24 bg-amber-400/5 blur-xl rounded-full"></div>
+              
+              <h3 className="text-sm font-bold uppercase tracking-wider text-amber-400 font-mono flex items-center mb-3">
+                <AlertOctagon className="w-5 h-5 mr-2 text-red-500 animate-pulse" />
+                Laporkan Pengguna
+              </h3>
+              
+              <p className="text-xs text-neutral-400 mb-4 leading-relaxed">
+                Silakan tuliskan alasan Anda melaporkan lebah ini. Aduan Anda akan ditinjau langsung oleh moderator sarang BeeChat.
+              </p>
+              
+              <textarea
+                required
+                rows={4}
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder="Tulis alasan aduan Anda di sini (misal: spamming, konten tidak pantas, kata-kata kasar)..."
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-2xl p-3 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-amber-400 resize-none mb-4"
+              />
+              
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReportModal(false);
+                    setReportReason('');
+                  }}
+                  className="flex-1 py-2.5 border border-neutral-800 hover:bg-neutral-800 text-neutral-400 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingReport || !reportReason.trim()}
+                  onClick={handleSendReport}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-neutral-800 disabled:text-neutral-600 text-white rounded-xl text-xs font-bold transition-all cursor-pointer text-center shadow-lg shadow-red-600/10 flex items-center justify-center space-x-1.5"
+                >
+                  {isSubmittingReport ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Kirim Laporan</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

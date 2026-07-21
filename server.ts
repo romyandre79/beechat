@@ -410,6 +410,24 @@ app.post('/api/admin/reports/resolve', async (req, res) => {
   }
 });
 
+// POST submit report
+app.post('/api/reports', async (req, res) => {
+  const { reporterId, reportedUserId, reason } = req.body;
+  if (!reporterId || !reportedUserId || !reason) {
+    return res.status(400).json({ error: 'Missing required parameters' });
+  }
+  try {
+    const id = 'rep_' + Date.now();
+    await dbQuery(
+      'INSERT INTO reports (id, reported_user_id, reporter_id, reason, status) VALUES ($1, $2, $3, $4, $5)',
+      [id, reportedUserId, reporterId, reason, 'pending']
+    );
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET user profile
 app.get('/api/users/profile', async (req, res) => {
   const { userId } = req.query;
