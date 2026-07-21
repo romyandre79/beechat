@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { motion } from 'motion/react';
 import { LayoutDashboard, Users, AlertOctagon, Activity, Radio, Megaphone, UserX, UserCheck, RefreshCw, Cpu, Server } from 'lucide-react';
+import { cleanName } from '../utils';
 
 interface UserItem {
   id: string;
@@ -202,10 +203,10 @@ export default function DashboardView({ onDispatchAnnouncement }: DashboardViewP
               {users.map(u => (
                 <div key={u.id} className="flex items-center justify-between p-2.5 bg-neutral-950 rounded-2xl border border-neutral-800/40">
                   <div className="flex items-center space-x-3">
-                    <img src={u.avatar} alt={u.name} className="w-10 h-10 rounded-full object-cover" />
+                    <img src={u.avatar} alt={cleanName(u.name)} className="w-10 h-10 rounded-full object-cover" />
                     <div>
-                      <h4 className="font-bold text-xs">{u.name}</h4>
-                      <p className="text-[10px] font-mono text-neutral-500">@{u.username}</p>
+                      <h4 className="font-bold text-xs">{cleanName(u.name)}</h4>
+                      <p className="text-[10px] font-mono text-neutral-500">@{cleanName(u.username)}</p>
                     </div>
                   </div>
                   

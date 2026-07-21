@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, X, Heart, Send, ArrowLeft, Camera, Type, Volume2 } from 'lucide-react';
 import { StatusUpdate, UserProfile, Chat } from '../types';
+import { cleanName } from '../utils';
 
 interface StatusViewProps {
   statuses: StatusUpdate[];
@@ -227,12 +228,12 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
                   <div className="relative flex items-center justify-center w-15 h-15 rounded-full p-[3px] border-2 border-amber-400 animate-pulse">
                     <img
                       src={latestStory.userAvatar}
-                      alt={latestStory.userName}
+                      alt={cleanName(latestStory.userName)}
                       className="w-full h-full rounded-full object-cover"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-sm truncate">{latestStory.userName}</h3>
+                    <h3 className="font-bold text-sm truncate">{cleanName(latestStory.userName)}</h3>
                     <p className="text-xs text-neutral-400 truncate mt-0.5">
                       {latestStory.type === 'text' ? latestStory.content : latestStory.type === 'video' ? '🎬 Video baru' : '📷 Foto baru'}
                     </p>
@@ -338,11 +339,11 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
                   </button>
                   <img
                     src={currentStory.userAvatar}
-                    alt={currentStory.userName}
+                    alt={cleanName(currentStory.userName)}
                     className="w-10 h-10 rounded-full object-cover border border-amber-400"
                   />
                   <div>
-                    <h4 className="font-bold text-sm">{currentStory.userName}</h4>
+                    <h4 className="font-bold text-sm">{cleanName(currentStory.userName)}</h4>
                     <p className="text-[10px] text-white/70 font-mono">
                       {formatMessageTime(currentStory.timestamp)}
                     </p>

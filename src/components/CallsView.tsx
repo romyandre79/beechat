@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Phone, Video, PhoneOff, Mic, MicOff, Volume2, VolumeX, Camera, CameraOff, Shield, Users, Monitor, Circle, Wifi, WifiOff } from 'lucide-react';
 import { CallLog } from '../types';
+import { cleanName } from '../utils';
 
 interface CallsViewProps {
   callLogs: CallLog[];
@@ -206,7 +207,7 @@ export default function CallsView({
             <div className="absolute bottom-4 left-4 right-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 flex justify-between items-end">
               <div>
                 <h3 className="font-bold text-lg text-white flex items-center">
-                  {activeCall.userName} <span className="text-xs font-normal text-amber-400 ml-2">({activeCall.type})</span>
+                  {cleanName(activeCall.userName)} <span className="text-xs font-normal text-amber-400 ml-2">({activeCall.type})</span>
                 </h3>
                 <p className="text-xs text-neutral-300 font-mono mt-1">
                   {getStatusText()}
@@ -236,7 +237,7 @@ export default function CallsView({
               />
             </div>
 
-            <h3 className="text-2xl font-extrabold mt-8 text-neutral-100">{activeCall?.userName}</h3>
+            <h3 className="text-2xl font-extrabold mt-8 text-neutral-100">{cleanName(activeCall?.userName)}</h3>
             <p className="text-sm font-mono text-amber-400 mt-2 font-bold uppercase tracking-wider">
               {activeCall?.type === 'voice' ? 'Panggilan Suara' : 'Video Call'} • {getStatusText()}
             </p>
@@ -359,7 +360,7 @@ export default function CallsView({
                       className="w-11 h-11 rounded-full object-cover border border-neutral-800"
                     />
                     <div>
-                      <h4 className="font-bold text-sm text-neutral-200">{log.userName}</h4>
+                      <h4 className="font-bold text-sm text-neutral-200">{cleanName(log.userName)}</h4>
                       <div className="flex items-center space-x-1.5 mt-1 text-xs text-neutral-500">
                         {log.isOutgoing ? (
                           <span className="text-amber-500 font-medium">Keluar •</span>
@@ -502,7 +503,7 @@ export default function CallsView({
                     />
                   </div>
 
-                  <h3 className="text-2xl font-extrabold mt-8 text-neutral-100">{activeCall.userName}</h3>
+                  <h3 className="text-2xl font-extrabold mt-8 text-neutral-100">{cleanName(activeCall.userName)}</h3>
                   <p className="text-sm font-mono text-amber-400 mt-2 font-bold uppercase tracking-wider">
                     {activeCall.type === 'voice' ? 'Panggilan Suara' : 'Video Call'} • {getStatusText()}
                   </p>

@@ -2,6 +2,7 @@ import { useState, useRef, FormEvent, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { User, QrCode, Phone, Mail, FileText, Camera, Sparkles, Check, Clipboard, ShieldAlert, LockKeyholeOpen } from 'lucide-react';
 import { UserProfile } from '../types';
+import { cleanName } from '../utils';
 
 interface ProfileViewProps {
   profile: UserProfile;
@@ -110,14 +111,14 @@ export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }:
           </button>
         </div>
 
-        <h2 className="text-xl font-extrabold mt-3">{profile.name}</h2>
+        <h2 className="text-xl font-extrabold mt-3">{cleanName(profile.name)}</h2>
         
         {/* Username Copier */}
         <button
           onClick={handleCopyUsername}
           className="text-xs text-neutral-400 hover:text-amber-400 font-mono mt-1 flex items-center space-x-1.5 transition-colors"
         >
-          <span>@{profile.username}</span>
+          <span>@{cleanName(profile.username)}</span>
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Clipboard className="w-3.5 h-3.5 text-neutral-600" />}
         </button>
       </div>
@@ -217,8 +218,8 @@ export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }:
                       <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-400">🐝</div>
                     )}
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-white truncate">{bu.name}</p>
-                      <p className="text-[9px] text-neutral-500 truncate">@{bu.username}</p>
+                      <p className="text-xs font-semibold text-white truncate">{cleanName(bu.name)}</p>
+                      <p className="text-[9px] text-neutral-500 truncate">@{cleanName(bu.username)}</p>
                     </div>
                   </div>
                   
@@ -279,8 +280,8 @@ export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }:
             </div>
 
             <div className="text-center">
-              <h4 className="font-extrabold text-sm">{profile.name}</h4>
-              <p className="text-xs font-mono text-neutral-400 mt-0.5">@{profile.username}</p>
+              <h4 className="font-extrabold text-sm">{cleanName(profile.name)}</h4>
+              <p className="text-xs font-mono text-neutral-400 mt-0.5">@{cleanName(profile.username)}</p>
             </div>
 
             <div className="flex space-x-2.5 mt-6 relative z-10">

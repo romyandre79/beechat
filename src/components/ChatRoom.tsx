@@ -5,7 +5,7 @@ import {
   BookOpen, Star, Pin, Trash2, Edit2, Reply, Copy, Check, CheckCheck, MoreVertical, Play, Pause, Vote, Plus, Lock, FileText, Camera
 } from 'lucide-react';
 import { Chat, Message, UserProfile, PollOption, Sticker } from '../types';
-import { speakText, formatMessageTime, simulateTranslate, simulateSummarize, simulateSuggestReplies } from '../utils';
+import { speakText, formatMessageTime, simulateTranslate, simulateSummarize, simulateSuggestReplies, cleanName } from '../utils';
 
 interface ChatRoomProps {
   chat: Chat;
@@ -963,7 +963,7 @@ export default function ChatRoom({
           </button>
           <img
             src={chat.avatar}
-            alt={chat.name}
+            alt={cleanName(chat.name)}
             onClick={() => chat.isGroup && setShowGroupDetailsModal(true)}
             className={`w-10 h-10 rounded-full object-cover border border-amber-400 ${chat.isGroup ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
           />
@@ -972,7 +972,7 @@ export default function ChatRoom({
             className={`min-w-0 ${chat.isGroup ? 'cursor-pointer' : ''}`}
           >
             <h3 className="font-extrabold text-sm truncate text-neutral-100 flex items-center">
-              {chat.name}
+              {cleanName(chat.name)}
               {chat.type === 'ai' && (
                 <span className="ml-1.5 text-[8px] bg-amber-400 text-neutral-950 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider animate-pulse">
                   AI
@@ -1863,10 +1863,10 @@ export default function ChatRoom({
                 <div className="flex flex-col items-center text-center space-y-2 border-b border-neutral-800 pb-4">
                   <img
                     src={chat.avatar}
-                    alt={chat.name}
+                    alt={cleanName(chat.name)}
                     className="w-16 h-16 rounded-full object-cover border-2 border-amber-400 shadow-md"
                   />
-                  <h4 className="font-bold text-base text-white">{chat.name}</h4>
+                  <h4 className="font-bold text-base text-white">{cleanName(chat.name)}</h4>
                   <p className="text-xs text-neutral-400 font-medium">
                     {chat.description || 'Tidak ada deskripsi sarang.'}
                   </p>
@@ -1908,8 +1908,8 @@ export default function ChatRoom({
                               <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-400">🐝</div>
                             )}
                             <div className="min-w-0">
-                              <p className="text-xs font-semibold text-white truncate">{u.name}</p>
-                              <p className="text-[10px] text-neutral-500 truncate">@{u.username}</p>
+                              <p className="text-xs font-semibold text-white truncate">{cleanName(u.name)}</p>
+                              <p className="text-[10px] text-neutral-500 truncate">@{cleanName(u.username)}</p>
                             </div>
                           </div>
                           <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-1 rounded-lg group-hover:bg-amber-400 group-hover:text-neutral-950 transition-all">
@@ -1953,7 +1953,7 @@ export default function ChatRoom({
                             )}
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-white truncate flex items-center">
-                                {m.name}
+                                {cleanName(m.name)}
                                 {m.id === currentUser.id && (
                                   <span className="ml-1 text-[8px] bg-neutral-800 text-neutral-400 px-1 py-0.5 rounded">Anda</span>
                                 )}

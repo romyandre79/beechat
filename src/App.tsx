@@ -8,7 +8,7 @@ import {
 import { Chat, Message, UserProfile, StatusUpdate, CallLog, Community } from './types';
 import {
   INITIAL_USER, INITIAL_CHATS, INITIAL_MESSAGES, INITIAL_CALLS, INITIAL_STATUS, INITIAL_COMMUNITIES,
-  speakText, simulateAiChat
+  speakText, simulateAiChat, cleanName
 } from './utils';
 import { encryptMessage, decryptMessage } from './crypto';
 import { webrtcService, IncomingCallData } from './webrtc';
@@ -1072,8 +1072,7 @@ export default function App() {
                           const unreadCount = messages.filter(
                             m => m.chatId === chat.id && m.senderId !== currentUser?.id && m.status !== 'read'
                           ).length;
-                          // Clean up trailing '0' if present from legacy mock name concatenation
-                          const cleanName = chat.name ? chat.name.replace(/0$/, '') : chat.name;
+                          const cleanedChatName = cleanName(chat.name);
 
                           return (
                             <div
@@ -1086,7 +1085,7 @@ export default function App() {
                               <div className="relative">
                                 <img
                                   src={chat.avatar}
-                                  alt={cleanName}
+                                  alt={cleanedChatName}
                                   className="w-12 h-12 rounded-full object-cover border border-neutral-800"
                                 />
                                 {chat.type === 'ai' && (
@@ -1099,7 +1098,7 @@ export default function App() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-baseline mb-1">
                                   <h4 className="text-xs font-bold truncate flex items-center">
-                                    {cleanName}
+                                    {cleanedChatName}
                                     {chat.isPinned && <Pin className="w-3 h-3 text-amber-500 ml-1.5 fill-current" />}
                                   </h4>
                                   <span className={`text-[10px] font-mono ${isActive ? 'text-neutral-900' : 'text-neutral-500'}`}>
@@ -1305,8 +1304,8 @@ export default function App() {
                             <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs text-neutral-400">🐝</div>
                           )}
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-white truncate">{selectedUser.name}</p>
-                            <p className="text-[10px] text-neutral-400 truncate">@{selectedUser.username} • {selectedUser.phone || selectedUser.email || ''}</p>
+                            <p className="text-xs font-semibold text-white truncate">{cleanName(selectedUser.name)}</p>
+                            <p className="text-[10px] text-neutral-400 truncate">@{cleanName(selectedUser.username)} • {selectedUser.phone || selectedUser.email || ''}</p>
                           </div>
                         </div>
                         <button
@@ -1340,7 +1339,7 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                   setSelectedUser(u);
-                                  setNewChatName(u.name);
+                                  setNewChatName(cleanName(u.name));
                                   setNewChatSearchQuery('');
                                   setSearchResults([]);
                                 }}
@@ -1352,8 +1351,8 @@ export default function App() {
                                   <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs text-neutral-400">🐝</div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-semibold text-white truncate">{u.name}</p>
-                                  <p className="text-[10px] text-neutral-400 truncate">@{u.username} • {u.phone || u.email || ''}</p>
+                                  <p className="text-xs font-semibold text-white truncate">{cleanName(u.name)}</p>
+                                  <p className="text-[10px] text-neutral-400 truncate">@{cleanName(u.username)} • {u.phone || u.email || ''}</p>
                                 </div>
                               </button>
                             ))}
