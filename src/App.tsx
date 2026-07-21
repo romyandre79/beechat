@@ -1069,6 +1069,12 @@ export default function App() {
                         })
                         .map(chat => {
                           const isActive = activeChatId === chat.id;
+                          const unreadCount = messages.filter(
+                            m => m.chatId === chat.id && m.senderId !== currentUser?.id && m.status !== 'read'
+                          ).length;
+                          // Clean up trailing '0' if present from legacy mock name concatenation
+                          const cleanName = chat.name ? chat.name.replace(/0$/, '') : chat.name;
+
                           return (
                             <div
                               key={chat.id}
@@ -1080,7 +1086,7 @@ export default function App() {
                               <div className="relative">
                                 <img
                                   src={chat.avatar}
-                                  alt={chat.name}
+                                  alt={cleanName}
                                   className="w-12 h-12 rounded-full object-cover border border-neutral-800"
                                 />
                                 {chat.type === 'ai' && (
@@ -1093,16 +1099,23 @@ export default function App() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-baseline mb-1">
                                   <h4 className="text-xs font-bold truncate flex items-center">
-                                    {chat.name}
+                                    {cleanName}
                                     {chat.isPinned && <Pin className="w-3 h-3 text-amber-500 ml-1.5 fill-current" />}
                                   </h4>
                                   <span className={`text-[10px] font-mono ${isActive ? 'text-neutral-900' : 'text-neutral-500'}`}>
                                     {chat.lastMessageTime ? new Date(chat.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                   </span>
                                 </div>
-                                <p className={`text-xs truncate ${isActive ? 'text-neutral-800' : 'text-neutral-400'}`}>
-                                  {chat.lastMessage}
-                                </p>
+                                <div className="flex justify-between items-center">
+                                  <p className={`text-xs truncate flex-1 ${isActive ? 'text-neutral-800' : 'text-neutral-400'}`}>
+                                    {chat.lastMessage}
+                                  </p>
+                                  {unreadCount > 0 && (
+                                    <span className="ml-2 px-1.5 py-0.5 text-[9px] font-extrabold bg-amber-400 text-neutral-950 rounded-full flex-shrink-0 animate-pulse">
+                                      {unreadCount}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           );

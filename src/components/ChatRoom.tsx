@@ -1127,8 +1127,8 @@ export default function ChatRoom({
                       : 'bg-neutral-800 text-neutral-100 rounded-tl-none'
                   }`}
                 >
-                  {/* Sender Name for Group Chats */}
-                  {Boolean(chat.isGroup) && !isMe && msg.type !== 'system' && (
+                  {/* Sender Name ONLY for Group Chats */}
+                  {chat.type === 'group' && !isMe && msg.type !== 'system' && (
                     <div className="text-[10px] font-extrabold text-amber-400 mb-1 font-sans">
                       {senderName}
                     </div>
