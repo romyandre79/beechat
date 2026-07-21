@@ -1110,7 +1110,7 @@ export default function App() {
                                 <div className="flex justify-between items-baseline mb-1">
                                   <h4 className="text-xs font-bold truncate flex items-center">
                                     {cleanedChatName}
-                                    {chat.isPinned && <Pin className="w-3 h-3 text-amber-500 ml-1.5 fill-current" />}
+                                    {!!chat.isPinned && <Pin className="w-3 h-3 text-amber-500 ml-1.5 fill-current" />}
                                   </h4>
                                   <span className={`text-[10px] font-mono ${isActive ? 'text-neutral-900' : 'text-neutral-500'}`}>
                                     {chat.lastMessageTime ? new Date(chat.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
