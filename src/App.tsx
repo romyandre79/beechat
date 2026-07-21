@@ -73,12 +73,12 @@ export default function App() {
     };
     fetchBlocked();
   }, [currentUser]);
-  
+
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<'chats' | 'status' | 'calls' | 'community' | 'profile' | 'settings' | 'admin'>('chats');
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const [chats, setChats] = useState<Chat[]>(() => {
     const saved = localStorage.getItem('beechat_cached_chats');
     if (saved) {
@@ -236,7 +236,7 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: currentUser.id })
-        }).catch(() => {});
+        }).catch(() => { });
 
         // Fetch Chats for current user
         const chatsRes = await fetch(API_BASE + `/api/chats?userId=${currentUser.id}`);
@@ -488,7 +488,7 @@ export default function App() {
             senderName: m.senderId === currentUser.id ? 'User' : 'Queen Bee AI',
             text: m.text
           }));
-        
+
         chatLogs.push({ senderName: 'User', text: text });
 
         // Call the backend API to generate AI response using the real Gemini API key
@@ -789,7 +789,7 @@ export default function App() {
 
     // Check duplicate direct chat
     if (newChatType === 'direct' && selectedUser) {
-      const existingDirectChat = chats.find(c => 
+      const existingDirectChat = chats.find(c =>
         !c.isGroup && c.type === 'direct' && c.members.includes(selectedUser.id)
       );
       if (existingDirectChat) {
@@ -802,8 +802,8 @@ export default function App() {
     const newId = 'chat_' + Date.now();
     const newChat: Chat = {
       id: newId,
-      name: newChatType === 'group' 
-        ? newChatName + ' 🍯' 
+      name: newChatType === 'group'
+        ? newChatName + ' 🍯'
         : selectedUser.name,
       avatar: newChatType === 'group'
         ? 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=150&auto=format&fit=crop&q=80'
@@ -820,7 +820,7 @@ export default function App() {
     };
 
     setChats(prev => [newChat, ...prev]);
-    
+
     // Create the chat room first
     try {
       await fetch(API_BASE + '/api/chats', {
@@ -919,8 +919,8 @@ export default function App() {
   // Filtered Chats
   const filteredChats = chats.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          c.lastMessage?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+      c.lastMessage?.toLowerCase().includes(searchQuery.toLowerCase());
+
     if (activeTab === 'chats') {
       return matchesSearch && !c.isArchived;
     }
@@ -932,10 +932,10 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-neutral-950 text-white' : 'bg-neutral-50 text-neutral-900'} flex font-sans`}>
-      
+
       {/* 1. APP LAYOUT WINDOW CONTAINER */}
       <div className="w-full max-w-7xl mx-auto flex h-screen overflow-hidden shadow-2xl relative">
-        
+
         {/* LEFT BAR: TAB SELECTOR (DESKTOP RAIL) */}
         <div className="hidden sm:flex flex-col items-center justify-between py-6 w-16 bg-neutral-900 border-r border-neutral-800">
           <div className="flex flex-col items-center space-y-6">
@@ -963,11 +963,10 @@ export default function App() {
                     setActiveTab(item.tab);
                     setActiveChatId(null); // Clear active chat on tab shift on small views
                   }}
-                  className={`p-3 rounded-xl transition-all cursor-pointer flex flex-col items-center ${
-                    activeTab === item.tab
+                  className={`p-3 rounded-xl transition-all cursor-pointer flex flex-col items-center ${activeTab === item.tab
                       ? 'bg-amber-400 text-neutral-950 shadow-md shadow-amber-400/10'
                       : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
-                  }`}
+                    }`}
                   title={item.label}
                 >
                   <item.icon className="w-5 h-5" />
@@ -995,12 +994,11 @@ export default function App() {
 
         {/* MAIN BODY AREA: SIDEBAR CHATS & ACTIVE ROOM */}
         <div className="flex-1 flex overflow-hidden">
-          
+
           {/* SIDEBAR MAIN PANE (Visible on desktop, or on mobile when NO activeChatId) */}
-          <div className={`w-full sm:w-80 md:w-96 flex flex-col h-full bg-neutral-950 border-r border-neutral-900 ${
-            activeChatId ? 'hidden sm:flex' : 'flex'
-          }`}>
-            
+          <div className={`w-full sm:w-80 md:w-96 flex flex-col h-full bg-neutral-950 border-r border-neutral-900 ${activeChatId ? 'hidden sm:flex' : 'flex'
+            }`}>
+
             {/* TAB SELECTOR (MOBILE FOOTER NAVBAR) */}
             <div className="sm:hidden flex justify-around p-3 bg-neutral-900 border-b border-neutral-800 sticky top-0 z-30">
               {[
@@ -1018,9 +1016,8 @@ export default function App() {
                     setActiveTab(item.tab);
                     setActiveChatId(null);
                   }}
-                  className={`p-2 rounded-xl transition-all ${
-                    activeTab === item.tab ? 'bg-amber-400 text-neutral-950' : 'text-neutral-400'
-                  }`}
+                  className={`p-2 rounded-xl transition-all ${activeTab === item.tab ? 'bg-amber-400 text-neutral-950' : 'text-neutral-400'
+                    }`}
                 >
                   <item.icon className="w-5 h-5" />
                 </button>
@@ -1089,9 +1086,8 @@ export default function App() {
                             <div
                               key={chat.id}
                               onClick={() => setActiveChatId(chat.id)}
-                              className={`w-full flex items-center space-x-3.5 p-3.5 rounded-2xl transition-all cursor-pointer ${
-                                isActive ? 'bg-amber-400 text-neutral-950 font-bold shadow' : 'hover:bg-neutral-900/60'
-                              }`}
+                              className={`w-full flex items-center space-x-3.5 p-3.5 rounded-2xl transition-all cursor-pointer ${isActive ? 'bg-amber-400 text-neutral-950 font-bold shadow' : 'hover:bg-neutral-900/60'
+                                }`}
                             >
                               <div className="relative">
                                 <img
@@ -1198,9 +1194,8 @@ export default function App() {
             </div>
           </div>
           {/* RIGHT BAR: CHAT ROOM / DETAILS STAGE (Visible on desktop, or on mobile when activeChatId is SET) */}
-          <div className={`flex-1 flex flex-col h-full bg-neutral-900 ${
-            activeChatId ? 'flex' : 'hidden sm:flex'
-          }`}>
+          <div className={`flex-1 flex flex-col h-full bg-neutral-900 ${activeChatId ? 'flex' : 'hidden sm:flex'
+            }`}>
             {activeChatId && activeChat ? (
               <ChatRoom
                 chat={activeChat}
@@ -1227,7 +1222,7 @@ export default function App() {
               /* LANDING DEFAULT SCREEN FOR DESKTOP */
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center select-none bg-neutral-950 relative overflow-hidden">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-amber-500/5 blur-3xl rounded-full"></div>
-                
+
                 {/* Honeycomb Centerpiece graphics */}
                 <div className="w-28 h-28 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-amber-500/10 mb-6 relative">
                   <svg className="w-14 h-14 text-neutral-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -1238,7 +1233,7 @@ export default function App() {
                 </div>
 
                 <h1 className="text-3xl font-extrabold tracking-tight">
-                  Bee<span className="text-amber-400">Chat</span> Desktop
+                  Bee<span className="text-amber-400">Chat</span>
                 </h1>
                 <p className="text-neutral-400 text-sm mt-3.5 max-w-sm leading-relaxed font-sans">
                   Kirim dan terima pesan dengan cepat, buat polling sarang, bagikan status, atau minta bantuan asisten cerdas <strong>Queen Bee AI</strong>!
@@ -1281,18 +1276,16 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setNewChatType('direct')}
-                      className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                        newChatType === 'direct' ? 'bg-amber-400 text-neutral-950' : 'text-neutral-400 hover:text-white'
-                      }`}
+                      className={`py-2 text-xs font-semibold rounded-lg transition-all ${newChatType === 'direct' ? 'bg-amber-400 text-neutral-950' : 'text-neutral-400 hover:text-white'
+                        }`}
                     >
                       Obrolan Pribadi (Direct)
                     </button>
                     <button
                       type="button"
                       onClick={() => setNewChatType('group')}
-                      className={`py-2 text-xs font-semibold rounded-lg transition-all ${
-                        newChatType === 'group' ? 'bg-amber-400 text-neutral-950' : 'text-neutral-400 hover:text-white'
-                      }`}
+                      className={`py-2 text-xs font-semibold rounded-lg transition-all ${newChatType === 'group' ? 'bg-amber-400 text-neutral-950' : 'text-neutral-400 hover:text-white'
+                        }`}
                     >
                       Grup Kelompok Kerja
                     </button>
@@ -1305,7 +1298,7 @@ export default function App() {
                       <span>Cari Anggota Lebah</span>
                       <span className="text-[10px] text-neutral-500">Berdasarkan Nama/Email/Telp</span>
                     </label>
-                    
+
                     {selectedUser ? (
                       <div className="flex items-center justify-between bg-amber-400/10 border border-amber-400/30 p-3 rounded-xl">
                         <div className="flex items-center space-x-3">
