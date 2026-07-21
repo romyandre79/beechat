@@ -930,7 +930,7 @@ export default function App() {
   const activeChat = chats.find(c => c.id === activeChatId);
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-neutral-950 text-white' : 'bg-neutral-50 text-neutral-900'} flex font-sans`}>
+    <div className={`min-h-screen ${darkMode ? 'bg-neutral-950 text-white' : 'light-theme bg-neutral-50 text-neutral-900'} flex font-sans`}>
 
       {/* 1. APP LAYOUT WINDOW CONTAINER */}
       <div className="w-full max-w-7xl mx-auto flex h-screen overflow-hidden shadow-2xl relative">

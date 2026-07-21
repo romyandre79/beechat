@@ -1,1 +1,99 @@
 @import "tailwindcss";
+
+/* LIGHT THEME OVERRIDES FOR BEECHAT */
+.light-theme {
+  --bg-main: #f9fafb; /* bg-neutral-50 */
+  --bg-card: #ffffff; /* bg-white */
+  --bg-input: #f3f4f6; /* bg-neutral-100 */
+  --text-main: #111827; /* text-neutral-900 */
+  --text-sub: #4b5563; /* text-neutral-600 */
+  --border-main: #e5e7eb; /* border-neutral-200 */
+}
+
+/* Backgrounds */
+.light-theme.bg-neutral-950,
+.light-theme .bg-neutral-950,
+.light-theme .bg-neutral-900,
+.light-theme .bg-neutral-850,
+.light-theme .bg-neutral-800 {
+  background-color: var(--bg-card) !important;
+}
+
+.light-theme.bg-neutral-950,
+.light-theme .bg-neutral-950 {
+  background-color: var(--bg-main) !important;
+}
+
+.light-theme .bg-neutral-850,
+.light-theme .bg-neutral-800,
+.light-theme .bg-neutral-950\/40,
+.light-theme .bg-neutral-900\/60 {
+  background-color: var(--bg-input) !important;
+}
+
+/* Specific component overrides */
+.light-theme .hover\:bg-neutral-800:hover,
+.light-theme .hover\:bg-neutral-700:hover,
+.light-theme .hover\:bg-neutral-900:hover {
+  background-color: var(--bg-input) !important;
+}
+
+/* Text Colors */
+.light-theme.text-white,
+.light-theme .text-white,
+.light-theme .text-neutral-100,
+.light-theme .text-neutral-200 {
+  color: var(--text-main) !important;
+}
+
+.light-theme .text-neutral-300,
+.light-theme .text-neutral-400,
+.light-theme .text-neutral-500 {
+  color: var(--text-sub) !important;
+}
+
+/* Borders */
+.light-theme .border-neutral-800,
+.light-theme .border-neutral-900,
+.light-theme .border-neutral-800\/40,
+.light-theme .border-neutral-700 {
+  border-color: var(--border-main) !important;
+}
+
+/* Form Inputs */
+.light-theme input,
+.light-theme textarea {
+  background-color: var(--bg-input) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-main) !important;
+}
+
+.light-theme input::placeholder,
+.light-theme textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Keep user own chat message text and backgrounds intact (amber brand style) */
+.light-theme .bg-amber-400,
+.light-theme .bg-amber-400 * {
+  background-color: #fbbf24 !important; /* bg-amber-400 */
+  color: #0a0a0a !important; /* text-neutral-950 */
+}
+
+/* Chat bubble styling for other users */
+.light-theme .bg-neutral-900\/40,
+.light-theme .bg-neutral-950\/20 {
+  background-color: #f3f4f6 !important; /* bg-neutral-100 */
+  color: var(--text-main) !important;
+}
+
+/* Status view active item override */
+.light-theme .bg-neutral-800\/50 {
+  background-color: var(--bg-input) !important;
+}
+
+/* Chat Room input bar and header */
+.light-theme .bg-neutral-950\/95,
+.light-theme .bg-neutral-900\/95 {
+  background-color: var(--bg-card) !important;
+}
