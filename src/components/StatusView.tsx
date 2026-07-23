@@ -4,6 +4,8 @@ import { Plus, X, Heart, Send, ArrowLeft, Camera, Type, Volume2 } from 'lucide-r
 import { StatusUpdate, UserProfile, Chat } from '../types';
 import { cleanName } from '../utils';
 
+const API_BASE = (window.location.protocol.startsWith('http') && !window.location.origin.startsWith('capacitor://') && !window.location.origin.startsWith('http://localhost:80') && !window.location.origin.startsWith('file://')) ? window.location.origin : 'http://103.29.212.67:3000';
+
 interface StatusViewProps {
   statuses: StatusUpdate[];
   currentUser: UserProfile;
@@ -22,6 +24,15 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
   const [statusReply, setStatusReply] = useState('');
   const [liked, setLiked] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [localProgress, setLocalProgress] = useState<number | null>(null);
+
+  // Trimming states
+  const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
+  const [isTrimming, setIsTrimming] = useState(false);
+  const [trimProgress, setTrimProgress] = useState(0);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,11 +120,27 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Limit to 3MB to prevent blocking the remote DB connection
+    // Check if it's a video and size > 3MB
+    if (file.type.startsWith('video/') && file.size > 3 * 1024 * 1024) {
+      setPendingVideo(file);
+      const url = URL.createObjectURL(file);
+      const video = document.createElement('video');
+      video.src = url;
+      video.onloadedmetadata = () => {
+        setVideoDuration(video.duration);
+        setTrimStart(0);
+        setTrimEnd(Math.min(video.duration, 15)); // default to max 15s or full duration
+        URL.revokeObjectURL(url);
+      };
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Limit to 3MB for image or smaller video to prevent blocking remote DB connection
     const maxBytes = 3 * 1024 * 1024;
     if (file.size > maxBytes) {
       alert("Bzzzt! Ukuran media terlalu besar, maksimal 3MB agar sayap lebah kami tidak keberatan mengunggah! 🐝🍯");
@@ -122,27 +149,171 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
     }
 
     setIsUploading(true);
+    setLocalProgress(0);
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const result = event.target?.result as string;
-      try {
-        if (file.type.startsWith('video/')) {
-          await onAddStatus(result, 'video');
-        } else {
-          await onAddStatus(result, 'image');
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', API_BASE + '/api/upload');
+      xhr.setRequestHeader('x-file-name', file.name);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          setLocalProgress(percent);
         }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.onerror = () => {
+      };
+
+      const result = await new Promise<{ url: string, fileName: string }>((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+              reject(new Error('Format respons server salah'));
+            }
+          } else {
+            reject(new Error(`Gagal dengan kode status ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Koneksi internet terputus'));
+        xhr.send(file);
+      });
+
+      const type = file.type.startsWith('video/') ? 'video' : 'image';
+      await onAddStatus(result.url, type);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Bzzzt! Gagal mengunggah media status: ${err.message || err}`);
+    } finally {
       setIsUploading(false);
+      setLocalProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleTrimVideo = async () => {
+    if (!pendingVideo) return;
+    setIsTrimming(true);
+    setTrimProgress(0);
+
+    const videoUrl = URL.createObjectURL(pendingVideo);
+    const video = document.createElement('video');
+    video.src = videoUrl;
+    video.muted = true;
+    video.playsInline = true;
+    
+    // Wait for metadata to load
+    await new Promise<void>((resolve) => {
+      video.onloadedmetadata = () => {
+        resolve();
+      };
+    });
+
+    video.currentTime = trimStart;
+
+    // Wait for seek to complete
+    await new Promise<void>((resolve) => {
+      video.onseeked = () => {
+        resolve();
+      };
+    });
+
+    // Get stream from video element
+    const stream = (video as any).captureStream ? (video as any).captureStream() : (video as any).mozCaptureStream();
+    
+    let options = {};
+    const candidateTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4'
+    ];
+    for (const type of candidateTypes) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        options = { mimeType: type };
+        break;
+      }
+    }
+    const mediaRecorder = new MediaRecorder(stream, options);
+    
+    const chunks: Blob[] = [];
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
     };
-    reader.readAsDataURL(file);
+
+    const trimDuration = trimEnd - trimStart;
+
+    const processPromise = new Promise<File>((resolve, reject) => {
+      mediaRecorder.onstop = () => {
+        const trimmedBlob = new Blob(chunks, { type: 'video/webm' });
+        const trimmedFile = new File([trimmedBlob], pendingVideo.name.replace(/\.[^/.]+$/, "") + "_trimmed.webm", {
+          type: 'video/webm'
+        });
+        resolve(trimmedFile);
+      };
+
+      video.play();
+      mediaRecorder.start();
+
+      const checkInterval = setInterval(() => {
+        const elapsed = video.currentTime - trimStart;
+        const progressPercent = Math.min(100, Math.round((elapsed / trimDuration) * 100));
+        setTrimProgress(progressPercent);
+
+        if (video.currentTime >= trimEnd || video.ended) {
+          clearInterval(checkInterval);
+          video.pause();
+          mediaRecorder.stop();
+          stream.getTracks().forEach((track: any) => track.stop());
+          URL.revokeObjectURL(videoUrl);
+        }
+      }, 100);
+    });
+
+    try {
+      const processedFile = await processPromise;
+      setPendingVideo(null);
+      setIsUploading(true);
+      setLocalProgress(0);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', API_BASE + '/api/upload');
+      xhr.setRequestHeader('x-file-name', processedFile.name);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          setLocalProgress(percent);
+        }
+      };
+
+      const result = await new Promise<{ url: string, fileName: string }>((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+              reject(new Error('Format respons server salah'));
+            }
+          } else {
+            reject(new Error(`Gagal dengan kode status ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Koneksi internet terputus'));
+        xhr.send(processedFile);
+      });
+
+      await onAddStatus(result.url, 'video');
+    } catch (err: any) {
+      console.error(err);
+      alert(`Bzzzt! Gagal memotong atau mengunggah video: ${err.message || err}`);
+    } finally {
+      setIsTrimming(false);
+      setIsUploading(false);
+      setLocalProgress(null);
+    }
   };
 
   const handleSendReply = () => {
@@ -249,6 +420,134 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
           </div>
         </div>
       </div>
+
+      {/* VIDEO TRIMMER DIALOG */}
+      {pendingVideo && (
+        <div className="fixed inset-0 z-50 bg-neutral-950/90 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-md bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-800 shadow-2xl"
+          >
+            <div className="p-4 bg-neutral-950 border-b border-neutral-800 flex justify-between items-center">
+              <h3 className="font-bold text-sm flex items-center text-amber-400">
+                <Camera className="w-4 h-4 mr-1.5" /> Potong Video Status
+              </h3>
+              <button onClick={() => setPendingVideo(null)} className="p-1 hover:bg-neutral-800 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              <p className="text-xs text-neutral-400">
+                Video lebah ini berukuran <strong>{(pendingVideo.size / (1024 * 1024)).toFixed(1)} MB</strong>. Agar sayap lebah kami tidak keberatan mengunggah, potong durasi video ini bzzzt! 🐝🍯
+              </p>
+              
+              <div className="relative aspect-video bg-black rounded-2xl overflow-hidden border border-neutral-800 flex items-center justify-center">
+                <video
+                  src={URL.createObjectURL(pendingVideo)}
+                  controls
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-neutral-400 font-medium">Mulai (detik)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={Math.max(0, trimEnd - 1)}
+                      step={0.1}
+                      value={trimStart}
+                      onChange={(e) => setTrimStart(Math.max(0, Math.min(parseFloat(e.target.value) || 0, trimEnd - 0.5)))}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-neutral-400 font-medium">Selesai (detik)</label>
+                    <input
+                      type="number"
+                      min={trimStart + 0.5}
+                      max={videoDuration}
+                      step={0.1}
+                      value={trimEnd}
+                      onChange={(e) => setTrimEnd(Math.max(trimStart + 0.5, Math.min(parseFloat(e.target.value) || videoDuration, videoDuration)))}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-400 font-medium flex justify-between">
+                    <span>Rentang Potong Timeline</span>
+                    <span className="font-mono text-amber-400 text-[10px]">{(trimEnd - trimStart).toFixed(1)}s dari {videoDuration.toFixed(1)}s</span>
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="range"
+                      min={0}
+                      max={videoDuration}
+                      step={0.1}
+                      value={trimStart}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setTrimStart(val);
+                        if (val >= trimEnd) setTrimEnd(Math.min(videoDuration, val + 1));
+                      }}
+                      className="w-full accent-amber-400"
+                    />
+                    <input
+                      type="range"
+                      min={0}
+                      max={videoDuration}
+                      step={0.1}
+                      value={trimEnd}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setTrimEnd(val);
+                        if (val <= trimStart) setTrimStart(Math.max(0, val - 1));
+                      }}
+                      className="w-full accent-amber-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {isTrimming ? (
+                <div className="space-y-2 py-2">
+                  <div className="flex justify-between items-center text-xs font-semibold">
+                    <span className="text-amber-400">Sedang memotong video...</span>
+                    <span>{trimProgress}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-400 transition-all duration-150"
+                      style={{ width: `${trimProgress}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-end space-x-2 pt-2">
+                  <button
+                    onClick={() => setPendingVideo(null)}
+                    className="px-4 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs font-semibold text-neutral-400 hover:text-white"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleTrimVideo}
+                    className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-neutral-950 font-bold rounded-xl text-xs transition-all shadow"
+                  >
+                    Potong & Bagikan
+                  </button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* CREATE STATUS TEXT DIALOG */}
       {showCreator && (
@@ -364,7 +663,7 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
               ) : currentStory.type === 'video' ? (
                 <div className="max-w-full max-h-[80vh] w-full flex justify-center relative rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl bg-black">
                   <video
-                    src={currentStory.content}
+                    src={currentStory.content.startsWith('/') ? (API_BASE + currentStory.content) : currentStory.content}
                     controls
                     autoPlay
                     playsInline
@@ -377,7 +676,7 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
               ) : (
                 <div className="max-w-full max-h-[80vh] relative rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl">
                   <img
-                    src={currentStory.content}
+                    src={currentStory.content.startsWith('/') ? (API_BASE + currentStory.content) : currentStory.content}
                     alt="Story media"
                     className="w-full max-h-[75vh] object-contain"
                   />
@@ -424,15 +723,15 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
             </div>
             <div className="w-full space-y-3">
               <h3 className="font-bold text-sm text-white">
-                Mengunggah... {uploadProgress !== null ? `${uploadProgress}%` : ''}
+                Mengunggah... {localProgress !== null ? `${localProgress}%` : (uploadProgress !== null ? `${uploadProgress}%` : '')}
               </h3>
               <p className="text-xs text-neutral-400">Sarang lebah sedang mengirim media Anda ke database remote. Harap tunggu bzzzt!</p>
               
-              {uploadProgress !== null && (
+              {(localProgress !== null || uploadProgress !== null) && (
                 <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden mt-1">
                   <div 
                     className="h-full bg-amber-400 transition-all duration-150"
-                    style={{ width: `${uploadProgress}%` }}
+                    style={{ width: `${localProgress !== null ? localProgress : uploadProgress}%` }}
                   />
                 </div>
               )}
