@@ -26,6 +26,9 @@ export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }:
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
   // Blocked Users Management
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
 
@@ -77,6 +80,70 @@ export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }:
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownloadQR = async () => {
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent('beechat://user/' + profile.username)}`;
+    try {
+      const response = await fetch(qrUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `beechat_qr_${profile.username}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('Failed to download QR code:', err);
+      window.open(qrUrl, '_blank');
+    }
+  };
+
+  const handleAvatarChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxBytes = 3 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      alert("Bzzzt! Ukuran avatar terlalu besar, maksimal 3MB agar lebah pekerja kami tidak keberatan mengunggah! 🐝🍯");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', API_BASE + '/api/upload');
+      xhr.setRequestHeader('x-file-name', file.name);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+      const result = await new Promise<{ url: string, fileName: string }>((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch (e) {
+              reject(new Error('Format respons server salah'));
+            }
+          } else {
+            reject(new Error(`Gagal dengan kode status ${xhr.status}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('Koneksi internet terputus'));
+        xhr.send(file);
+      });
+
+      const absoluteUrl = result.url.startsWith('http') ? result.url : (API_BASE + result.url);
+      onUpdateProfile({ avatar: absoluteUrl });
+    } catch (err: any) {
+      console.error(err);
+      alert(`Bzzzt! Gagal mengunggah foto profil: ${err.message || err}`);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-neutral-950 font-sans text-white overflow-y-auto">
       {/* Cover and Avatar Section */}
@@ -104,11 +171,27 @@ export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }:
           <img
             src={profile.avatar}
             alt={profile.name}
-            className="w-28 h-28 rounded-full object-cover border-4 border-neutral-950 shadow-2xl"
+            className={`w-28 h-28 rounded-full object-cover border-4 border-neutral-950 shadow-2xl transition-opacity ${isUploading ? 'opacity-40' : ''}`}
           />
-          <button className="absolute bottom-1 right-1 p-2 bg-amber-400 text-neutral-950 hover:bg-amber-500 rounded-full shadow-md hover:scale-105 transition-transform">
+          {isUploading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-8 h-8 border-4 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          )}
+          <button 
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute bottom-1 right-1 p-2 bg-amber-400 text-neutral-950 hover:bg-amber-500 rounded-full shadow-md hover:scale-105 transition-transform cursor-pointer"
+          >
             <Camera className="w-4 h-4" />
           </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleAvatarChange}
+            accept="image/*"
+            className="hidden"
+          />
         </div>
 
         <h2 className="text-xl font-extrabold mt-3">{cleanName(profile.name)}</h2>
@@ -254,25 +337,15 @@ export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }:
             
             {/* Custom Stylized QR Code Stage */}
             <div className="my-6 p-4 bg-white rounded-3xl inline-block border-4 border-amber-400 relative z-10 shadow-xl">
-              <div className="w-52 h-52 flex flex-col justify-between p-2 relative">
-                {/* Simulated QR block art grids with a cute bee vector centered */}
-                <div className="grid grid-cols-4 gap-1.5 h-full w-full opacity-90 select-none">
-                  {[...Array(16)].map((_, idx) => (
-                    <div
-                      key={idx}
-                      className={`rounded ${
-                        idx === 0 || idx === 3 || idx === 12 || idx === 15 || idx === 5 || idx === 10
-                          ? 'bg-neutral-950'
-                          : idx === 7 || idx === 8
-                          ? 'bg-amber-500'
-                          : 'bg-neutral-900/60'
-                      }`}
-                    />
-                  ))}
-                </div>
+              <div className="w-52 h-52 flex items-center justify-center relative">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=208x208&data=${encodeURIComponent('beechat://user/' + profile.username)}`}
+                  alt="QR Code"
+                  className="w-full h-full object-contain rounded-2xl"
+                />
                 {/* Honeycomb Center logo overlay */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-amber-400 p-2.5 rounded-2xl border-2 border-white shadow-md">
-                  <svg className="w-6 h-6 text-neutral-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-amber-400 p-1.5 rounded-xl border border-white shadow-md">
+                  <svg className="w-4 h-4 text-neutral-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                     <path d="M12 2a10 10 0 0 1 10 10v4a2 2 0 0 1-2 2h-4l-4 4-4-4H4a2 2 0 0 1-2-2v-4A10 10 0 0 1 12 2z" />
                   </svg>
                 </div>
@@ -292,10 +365,7 @@ export default function ProfileView({ profile, onUpdateProfile, onUnblockUser }:
                 Tutup
               </button>
               <button
-                onClick={() => {
-                  alert('QR Code BeeChat Anda berhasil disimpan ke Galeri Foto! 🍯📸');
-                  setShowQR(false);
-                }}
+                onClick={handleDownloadQR}
                 className="flex-1 py-2.5 bg-amber-400 hover:bg-amber-500 text-neutral-950 font-bold rounded-xl text-xs transition-colors"
               >
                 Unduh QR

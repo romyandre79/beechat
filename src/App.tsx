@@ -1169,6 +1169,11 @@ export default function App() {
                     const next = { ...currentUser, ...updated };
                     setCurrentUser(next);
                     localStorage.setItem('beechat_user', JSON.stringify(next));
+                    fetch(API_BASE + '/api/users/sync', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(next)
+                    }).catch(err => console.error('Failed to sync profile changes:', err));
                   }}
                   onUnblockUser={handleUnblockUser}
                 />
