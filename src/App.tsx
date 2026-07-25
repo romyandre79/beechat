@@ -1221,6 +1221,7 @@ export default function App() {
                 onBlockUser={handleBlockUser}
                 onUnblockUser={handleUnblockUser}
                 blockedUsers={blockedUsers}
+                wallpaper={wallpaper}
               />
             ) : (
               /* LANDING DEFAULT SCREEN FOR DESKTOP */

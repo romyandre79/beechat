@@ -30,6 +30,7 @@ interface ChatRoomProps {
   onBlockUser: (targetUserId: string) => void;
   onUnblockUser: (targetUserId: string) => void;
   blockedUsers: string[];
+  wallpaper: string;
 }
 declare const __API_SERVER__: string;
 declare const __API_PORT__: string;
@@ -50,7 +51,8 @@ export default function ChatRoom({
   onDeleteChat,
   onBlockUser,
   onUnblockUser,
-  blockedUsers
+  blockedUsers,
+  wallpaper
 }: ChatRoomProps) {
   const [inputText, setInputText] = useState('');
   const [activeMessageIdMenu, setActiveMessageIdMenu] = useState<string | null>(null);
@@ -1304,10 +1306,7 @@ export default function ChatRoom({
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 bg-cover bg-center chatroom-bg"
-        style={{
-          backgroundImage: `radial-gradient(circle at center, rgba(15, 15, 15, 0.95), rgba(5, 5, 5, 0.99))`
-        }}
+        className={`flex-1 overflow-y-auto p-4 space-y-4 bg-cover bg-center chatroom-bg ${wallpaper}`}
       >
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center text-neutral-500 max-w-xs mx-auto">
