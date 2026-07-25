@@ -654,6 +654,9 @@ export default function App() {
       },
       onConnectionStateChange: (state: string) => {
         setWebrtcConnectionState(state);
+      },
+      onCallTypeChanged: (newType: 'voice' | 'video') => {
+        setActiveCall(prev => prev ? { ...prev, type: newType } : null);
       }
     });
 
@@ -778,6 +781,21 @@ export default function App() {
 
   const handleToggleCamera = (): boolean => {
     return webrtcService.toggleCamera();
+  };
+
+  const handleToggleCallType = async () => {
+    if (!activeCall) return;
+    const newType = activeCall.type === 'video' ? 'voice' : 'video';
+    if (newType === 'video') {
+      const stream = await webrtcService.upgradeToVideo();
+      if (stream) {
+        setLocalStream(stream);
+        setActiveCall(prev => prev ? { ...prev, type: 'video' } : null);
+      }
+    } else {
+      webrtcService.changeCallType('voice');
+      setActiveCall(prev => prev ? { ...prev, type: 'voice' } : null);
+    }
   };
 
   // Create new chat room (Group or direct)
@@ -1152,6 +1170,7 @@ export default function App() {
                   connectionState={webrtcConnectionState}
                   onToggleMute={handleToggleMute}
                   onToggleCamera={handleToggleCamera}
+                  onToggleCallType={handleToggleCallType}
                 />
               )}
 
@@ -1441,6 +1460,7 @@ export default function App() {
               onToggleMute={handleToggleMute}
               onToggleCamera={handleToggleCamera}
               activeCallOnly={true}
+              onToggleCallType={handleToggleCallType}
             />
           </div>
         )}

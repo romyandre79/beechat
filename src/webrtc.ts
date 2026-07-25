@@ -22,6 +22,7 @@ export interface WebRTCCallbacks {
   onCallEnded: (reason: 'remote-hangup' | 'rejected' | 'unavailable' | 'error') => void;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange: (state: string) => void;
+  onCallTypeChanged?: (callType: 'voice' | 'video') => void;
 }
 
 // --- WebRTC Service Class ---
@@ -143,6 +144,14 @@ export class WebRTCService {
       this.cleanup();
       this.callbacks?.onCallEnded('unavailable');
     });
+
+    // Handle call type changes on-the-fly
+    this.socket.on('call-type-changed', async (data: { fromUserId: string; callType: 'voice' | 'video' }) => {
+      if (data.callType === 'video') {
+        await this.upgradeToVideo();
+      }
+      this.callbacks?.onCallTypeChanged?.(data.callType);
+    });
   }
 
   // --- Start Call (Caller side) ---
@@ -179,10 +188,14 @@ export class WebRTCService {
         this.peerConnection!.addTrack(track, this.localStream!);
       });
 
+      if (callType === 'voice') {
+        this.peerConnection.addTransceiver('video', { direction: 'inactive' });
+      }
+
       // Create and send offer
       const offer = await this.peerConnection!.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: callType === 'video'
+        offerToReceiveVideo: true
       });
       await this.peerConnection!.setLocalDescription(offer);
 
@@ -235,6 +248,10 @@ export class WebRTCService {
       this.localStream.getTracks().forEach(track => {
         this.peerConnection!.addTrack(track, this.localStream!);
       });
+
+      if (this.pendingCallType === 'voice') {
+        this.peerConnection.addTransceiver('video', { direction: 'inactive' });
+      }
 
       // Set remote description (the offer)
       await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(this.pendingOffer));
@@ -308,6 +325,47 @@ export class WebRTCService {
     // Speaker toggling is handled by the <audio>/<video> element's volume
     // This is a no-op at the WebRTC level; UI handles it
     return true;
+  }
+
+  async upgradeToVideo(): Promise<MediaStream | null> {
+    if (!this.localStream || !this.peerConnection) return null;
+    if (this.localStream.getVideoTracks().length > 0) {
+      const track = this.localStream.getVideoTracks()[0];
+      track.enabled = true;
+      return this.localStream;
+    }
+
+    try {
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      const videoTrack = videoStream.getVideoTracks()[0];
+      if (videoTrack) {
+        this.localStream.addTrack(videoTrack);
+        const transceiver = this.peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+        if (transceiver) {
+          await transceiver.sender.replaceTrack(videoTrack);
+          transceiver.direction = 'sendrecv';
+        }
+      }
+      return this.localStream;
+    } catch (err) {
+      console.error('[WebRTC] Gagal mengaktifkan kamera untuk upgrade panggilan video:', err);
+      return null;
+    }
+  }
+
+  changeCallType(callType: 'voice' | 'video') {
+    if (this.localStream) {
+      const videoTrack = this.localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = (callType === 'video');
+      }
+    }
+    this.socket?.emit('call-type-change', {
+      targetUserId: this.currentTargetUserId,
+      callType
+    });
   }
 
   // --- Getters ---
