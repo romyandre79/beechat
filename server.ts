@@ -1365,17 +1365,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Call type changed dynamically (voice <-> video)
-  socket.on('call-type-change', (data: { targetUserId: string; callType: 'voice' | 'video' }) => {
-    const targetSocketId = userSockets.get(data.targetUserId);
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('call-type-changed', {
-        fromUserId: socket.data.userId,
-        callType: data.callType
-      });
-    }
-  });
-
   // Cleanup on disconnect
   socket.on('disconnect', () => {
     if (socket.data.userId) {

@@ -23,13 +23,12 @@ interface CallsViewProps {
   onToggleMute: () => boolean;
   onToggleCamera: () => boolean;
   activeCallOnly?: boolean;
-  onToggleCallType?: () => void;
 }
 
 export default function CallsView({
   callLogs, activeCall, onStartCall, onEndCall, onAnswerCall, onRejectCall,
   localStream, remoteStream, connectionState, onToggleMute, onToggleCamera,
-  activeCallOnly = false, onToggleCallType
+  activeCallOnly = false
 }: CallsViewProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
@@ -264,6 +263,7 @@ export default function CallsView({
           </div>
         )}
 
+        {/* Main controls (Mute, Speaker, Answer/Hangup) */}
         <div className="flex items-center space-x-6">
           {/* Mute button */}
           <button
@@ -275,17 +275,6 @@ export default function CallsView({
           >
             {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
           </button>
-
-          {/* Toggle Call Type (voice <-> video) */}
-          {connectionState === 'connected' && onToggleCallType && (
-            <button
-              onClick={onToggleCallType}
-              className="p-4 bg-neutral-900 text-amber-400 hover:bg-neutral-800 rounded-full transition-all cursor-pointer border border-neutral-800 hover:scale-105"
-              title={activeCall?.type === 'video' ? 'Beralih ke Panggilan Suara' : 'Beralih ke Panggilan Video'}
-            >
-              {activeCall?.type === 'video' ? <Phone className="w-6 h-6" /> : <Video className="w-6 h-6" />}
-            </button>
-          )}
 
           {activeCall?.isIncoming && connectionState !== 'connected' ? (
             /* INCOMING CALL ACTIONS */
@@ -540,6 +529,7 @@ export default function CallsView({
                 </div>
               )}
 
+              {/* Main controls (Mute, Speaker, Answer/Hangup) */}
               <div className="flex items-center space-x-6">
                 {/* Mute button */}
                 <button
@@ -551,17 +541,6 @@ export default function CallsView({
                 >
                   {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                 </button>
-
-                {/* Toggle Call Type (voice <-> video) */}
-                {connectionState === 'connected' && onToggleCallType && (
-                  <button
-                    onClick={onToggleCallType}
-                    className="p-4 bg-neutral-900 text-amber-400 hover:bg-neutral-800 rounded-full transition-all cursor-pointer border border-neutral-800 hover:scale-105"
-                    title={activeCall.type === 'video' ? 'Beralih ke Panggilan Suara' : 'Beralih ke Panggilan Video'}
-                  >
-                    {activeCall.type === 'video' ? <Phone className="w-6 h-6" /> : <Video className="w-6 h-6" />}
-                  </button>
-                )}
 
                 {activeCall.isIncoming && connectionState !== 'connected' ? (
                   /* INCOMING CALL ACTIONS */

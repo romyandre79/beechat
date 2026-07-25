@@ -22,7 +22,6 @@ export interface WebRTCCallbacks {
   onCallEnded: (reason: 'remote-hangup' | 'rejected' | 'unavailable' | 'error') => void;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange: (state: string) => void;
-  onCallTypeChanged?: (callType: 'voice' | 'video') => void;
 }
 
 // --- WebRTC Service Class ---
@@ -144,12 +143,6 @@ export class WebRTCService {
       this.cleanup();
       this.callbacks?.onCallEnded('unavailable');
     });
-
-    // Handle call type changes on-the-fly
-    this.socket.on('call-type-changed', (data: { fromUserId: string; callType: 'voice' | 'video' }) => {
-      this.pendingCallType = data.callType;
-      this.callbacks?.onCallTypeChanged?.(data.callType);
-    });
   }
 
   // --- Start Call (Caller side) ---
@@ -172,17 +165,11 @@ export class WebRTCService {
     }
 
     try {
-      // Get local media stream (always request video to support dynamic switching)
+      // Get local media stream
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: callType === 'video' ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
       });
-
-      // If initially a voice call, disable the video track immediately
-      if (callType === 'voice') {
-        const videoTrack = this.localStream.getVideoTracks()[0];
-        if (videoTrack) videoTrack.enabled = false;
-      }
 
       // Create peer connection
       this.createPeerConnection();
@@ -195,7 +182,7 @@ export class WebRTCService {
       // Create and send offer
       const offer = await this.peerConnection!.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: true
+        offerToReceiveVideo: callType === 'video'
       });
       await this.peerConnection!.setLocalDescription(offer);
 
@@ -234,17 +221,12 @@ export class WebRTCService {
     }
 
     try {
-      // Get local media stream (always request video to support dynamic switching)
+      // Get local media stream
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: this.pendingCallType === 'video' ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
       });
 
-      // If initially a voice call, disable the video track immediately
-      if (this.pendingCallType === 'voice') {
-        const videoTrack = this.localStream.getVideoTracks()[0];
-        if (videoTrack) videoTrack.enabled = false;
-      }
 
       // Create peer connection
       this.createPeerConnection();
@@ -326,19 +308,6 @@ export class WebRTCService {
     // Speaker toggling is handled by the <audio>/<video> element's volume
     // This is a no-op at the WebRTC level; UI handles it
     return true;
-  }
-
-  changeCallType(callType: 'voice' | 'video') {
-    if (this.localStream) {
-      const videoTrack = this.localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = (callType === 'video');
-      }
-    }
-    this.socket?.emit('call-type-change', {
-      targetUserId: this.currentTargetUserId,
-      callType
-    });
   }
 
   // --- Getters ---
