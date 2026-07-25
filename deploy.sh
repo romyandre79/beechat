@@ -8,6 +8,9 @@ git pull origin main
 echo "🐝 Memasang dependensi Node.js..."
 npm i
 
+echo "🐝 Audit Fix Node.js..."
+npm i
+
 echo "🐝 Membangun bundle produksi (build)..."
 npm run build
 
