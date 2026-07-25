@@ -435,11 +435,12 @@ app.get('/api/users/profile', async (req, res) => {
     return res.status(400).json({ error: 'Missing userId parameter' });
   }
   try {
+    const fifteenSecondsAgo = new Date(Date.now() - 15000);
     await dbQuery(`
       UPDATE users 
       SET is_online = false, last_seen = last_active 
-      WHERE is_online = true AND last_active < CURRENT_TIMESTAMP - INTERVAL '15 seconds'
-    `);
+      WHERE is_online = true AND last_active < $1
+    `, [fifteenSecondsAgo]);
 
     const userRes = await dbQuery(
       'SELECT id, name, username, avatar, bio, email, phone, is_online as "isOnline", last_seen as "lastSeen", cover_photo as "coverPhoto" FROM users WHERE id = $1',
@@ -466,15 +467,16 @@ app.post('/api/users/ping', async (req, res) => {
     return res.status(400).json({ error: 'Missing userId parameter' });
   }
   try {
+    const fifteenSecondsAgo = new Date(Date.now() - 15000);
     await dbQuery(`
       UPDATE users 
       SET is_online = false, last_seen = last_active 
-      WHERE is_online = true AND last_active < CURRENT_TIMESTAMP - INTERVAL '15 seconds'
-    `);
+      WHERE is_online = true AND last_active < $1
+    `, [fifteenSecondsAgo]);
 
     await dbQuery(
-      'UPDATE users SET last_active = CURRENT_TIMESTAMP, is_online = true WHERE id = $1',
-      [String(userId)]
+      'UPDATE users SET last_active = $2, is_online = true WHERE id = $1',
+      [String(userId), new Date()]
     );
     res.json({ success: true });
   } catch (err: any) {
