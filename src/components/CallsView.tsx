@@ -370,7 +370,7 @@ export default function CallsView({
                           </span>
                         )}
                         <span>
-                          {date.toLocaleDateString([], { day: 'numeric', month: 'short' })} • {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {date.toLocaleDateString([], { day: 'numeric', month: 'short' })} • {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                         </span>
                       </div>
                     </div>

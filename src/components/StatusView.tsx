@@ -411,7 +411,7 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] font-mono text-neutral-500">
-                      {new Date(latestStory.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(latestStory.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                     </span>
                   </div>
                 </button>
@@ -746,5 +746,5 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
 function formatMessageTime(timestampStr: string): string {
   const date = new Date(timestampStr);
   if (isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' - ' + date.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) + ' - ' + date.toLocaleDateString([], { day: 'numeric', month: 'short' });
 }
