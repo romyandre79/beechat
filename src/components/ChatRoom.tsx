@@ -1302,10 +1302,9 @@ export default function ChatRoom({
         </div>
       </div>
 
-      {/* 2. CONVERSATION MESSAGE LIST */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 bg-cover bg-center"
+        className="flex-1 overflow-y-auto p-4 space-y-4 bg-cover bg-center chatroom-bg"
         style={{
           backgroundImage: `radial-gradient(circle at center, rgba(15, 15, 15, 0.95), rgba(5, 5, 5, 0.99))`
         }}

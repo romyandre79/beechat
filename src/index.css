@@ -93,7 +93,13 @@
 }
 
 /* Chat Room input bar and header */
-.light-theme .bg-neutral-950\/95,
-.light-theme .bg-neutral-900\/95 {
+.light-theme .bg-neutral-950/95,
+.light-theme .bg-neutral-900/95 {
   background-color: var(--bg-card) !important;
 }
+
+/* Light theme Chat Room background override */
+.light-theme .chatroom-bg {
+  background-image: radial-gradient(circle at center, #ffffff, #f3f4f6) !important;
+}
+
