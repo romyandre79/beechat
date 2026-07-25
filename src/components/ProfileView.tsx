@@ -1,4 +1,4 @@
-import { useState, useRef, FormEvent, useEffect } from 'react';
+import { useState, useRef, FormEvent, useEffect, ChangeEvent } from 'react';
 import { motion } from 'motion/react';
 import { User, QrCode, Phone, Mail, FileText, Camera, Sparkles, Check, Clipboard, ShieldAlert, LockKeyholeOpen } from 'lucide-react';
 import { UserProfile } from '../types';
