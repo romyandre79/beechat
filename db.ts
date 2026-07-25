@@ -36,7 +36,8 @@ if (process.env.DB_DRIVER === 'MySQL') {
     waitForConnections: true,
     connectionLimit: 20,
     queueLimit: 0,
-    connectTimeout: 15000
+    connectTimeout: 15000,
+    timezone: 'Z'
   });
 }
 

@@ -55,7 +55,7 @@ export default function StatusView({ statuses, currentUser, chats, uploadProgres
 
   // Extract all user IDs of other users we are in communication with
   const chatUserIds = chats.reduce<string[]>((acc, chat) => {
-    if (chat.members) {
+    if (chat.members && (chat.type === 'direct' || chat.type === 'ai')) {
       chat.members.forEach(memberId => {
         if (memberId !== currentUser.id && !acc.includes(memberId)) {
           acc.push(memberId);
